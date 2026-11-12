@@ -15,7 +15,6 @@ to Go, Rust or C. Design: [spec.md](spec.md).
 cmd/synth/       entry point (fang)
 internal/cli/    cobra commands, logger setup
 internal/synth/  core: types, operations, trees, interpreter, search
-benchmarks/      fixed set of example problems
 ```
 
 ## Common commands

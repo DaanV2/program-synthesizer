@@ -32,8 +32,14 @@ func NewRootCmd() *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&f.logLevel, "log-level", "info", "log level: debug, info, warn, error")
 	cmd.PersistentFlags().StringVar(&f.logFormat, "log-format", "text", "log format: text, json, logfmt")
+	cmd.PersistentFlags().StringP(projectFlag, "C", ".", "project directory (searches parent directories for spec.yaml)")
 
-	cmd.AddCommand(newSolveCmd())
+	cmd.AddCommand(
+		newInitCmd(),   // init.go   — interactive project wizard
+		newConfigCmd(), // config.go — get/set/list/unset spec settings
+		newDataCmd(),   // data.go   — add/import/list/validate examples
+		newSolveCmd(),
+	)
 	return cmd
 }
 

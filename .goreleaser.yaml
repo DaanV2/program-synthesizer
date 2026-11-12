@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# Release binaries for Linux, Windows and macOS (amd64 + arm64).
+#
+# Local / PR check:  just snapshot   (output in dist/)
+# Release:           .github/workflows/release-assets.yaml
+version: 2
+
+project_name: synth
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos: [linux, windows, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/DaanV2/program-synthesizer/infrastructure/version.Version={{ .Version }}
+      - -X github.com/DaanV2/program-synthesizer/infrastructure/version.Commit={{ .ShortCommit }}
+      - -X github.com/DaanV2/program-synthesizer/infrastructure/version.Date={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
+
+changelog:
+  disable: true # release-drafter writes the notes
+
+release:
+  # The release already exists (release-drafter) when this runs; only upload the archives.
+  mode: keep-existing

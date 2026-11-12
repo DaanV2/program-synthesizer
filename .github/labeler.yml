@@ -1,0 +1,30 @@
+CI/CD:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - ".goreleaser.yaml"
+          - ".golangci.yml"
+          - ".justfile"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/docs/**"
+          - "*.md"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - go.mod
+          - go.sum
+
+bug:
+  - head-branch: ["^bug", "bug"]
+chore:
+  - head-branch: ["^chore", "chore"]
+feature:
+  - head-branch: ["^feature", "feature"]
+
+  # Add 'release' label to any PR that is opened against the `main` branch
+release:
+  - base-branch: "main"

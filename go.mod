@@ -3,6 +3,7 @@ module synth
 go 1.25.8
 
 require (
+	charm.land/lipgloss/v2 v2.0.5
 	charm.land/log/v2 v2.0.1
 	github.com/charmbracelet/fang v1.0.0
 	github.com/spf13/cobra v1.10.2
@@ -10,7 +11,6 @@ require (
 )
 
 require (
-	charm.land/lipgloss/v2 v2.0.5 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260205113103-524a6607adb8 // indirect
 	github.com/charmbracelet/x/ansi v0.11.7 // indirect

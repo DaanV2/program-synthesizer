@@ -23,9 +23,13 @@ func newDataCmd() *cobra.Command {
 		Use:   "data",
 		Short: "Add, import, list and validate examples",
 		Long: "Manage the input/output examples of a project.\n\n" +
-			"Examples live in data/<split>/in/<name>.json and data/<split>/out/<name>.json,\n" +
+			"Examples live in `data/<split>/in/<name>.json` and `data/<split>/out/<name>.json`,\n" +
 			"where <split> is train (used for search) or holdout (used to catch overfitting).\n" +
-			"An example is the pair of files with the same name.",
+			"An example is the pair of files with the same name in one split.",
+		Example: `  synth data add --input in.json --output out.json
+  synth data import examples.csv --holdout 0.2
+  synth data list
+  synth data validate`,
 	}
 	cmd.AddCommand(newDataAddCmd(), newDataImportCmd(), newDataListCmd(), newDataValidateCmd())
 	return cmd
@@ -48,14 +52,21 @@ func newDataAddCmd() *cobra.Command {
 		Long: "Add one example to the project. The input and the output each come from a\n" +
 			"JSON file (--input/--output, '-' reads stdin) or from inline JSON (--in/--out).\n" +
 			"Both are type-checked against spec.yaml before anything is written.\n\n" +
-			"The input is always an object with one key per input parameter.",
-		Example: `  # inline JSON (bash, zsh)
-  synth data add --in '{"x": 3}' --out '7'
+			"The input is always an object with one key per input parameter. Files must be\n" +
+			"UTF-8 without a byte order mark.\n\n" +
+			"Without --name the example gets the next free number in the split (001, 002, ...).\n" +
+			"The two files are written with record fields in spec order, and their paths\n" +
+			"are printed.\n\n" +
+			"Inline JSON and PowerShell: PowerShell 7.3 and later pass '{\"x\": 3}' through\n" +
+			"unchanged. Windows PowerShell 5.1 strips the inner double quotes, so there\n" +
+			"write '{\\\"x\\\": 3}'. Files (--input/--output) work the same in every shell.",
+		Example: `  # inline JSON (bash, zsh, PowerShell 7.3+)
+  synth data add --in '{"x": 3}' --out 7
 
-  # inline JSON (PowerShell: escape inner quotes, or prefer files)
+  # inline JSON in Windows PowerShell 5.1: escape the inner quotes
   synth data add --in '{\"x\": 3}' --out 7
 
-  # from files, into the holdout split, with a chosen name
+  # from files (any shell), into the holdout split, with a chosen name
   synth data add --input in.json --output out.json --split holdout --name edge-case
 
   # input from stdin
@@ -182,8 +193,15 @@ func newDataImportCmd() *cobra.Command {
 			"      output is a scalar or a record of scalars. The header names the parameters,\n" +
 			"      plus 'out' for a scalar output or 'out.<field>' for each output field.\n" +
 			"      Bools may be true/false or 1/0. String cells are taken verbatim.\n\n" +
-			"Use '-' as FILE to read stdin (needs --format). Every example is checked first;\n" +
-			"if any of them has a problem, all problems are printed and nothing is written.",
+			"Use '-' as FILE to read stdin (needs --format). A UTF-8 byte order mark at the\n" +
+			"start of a JSONL or CSV file is ignored.\n\n" +
+			"Every example is checked against the spec first; if any of them has a problem,\n" +
+			"all problems are printed and nothing is written. Examples are not compared with\n" +
+			"each other or with existing data, so run `synth data validate` afterwards to\n" +
+			"find contradictions.\n\n" +
+			"--holdout sends round(fraction * count) randomly chosen examples to the holdout\n" +
+			"split. The choice depends only on the number of examples, the fraction and\n" +
+			"--seed, so the same import gives the same split on every machine.",
 		Example: `  # two directories of matching files
   synth data import --inputs raw/in --outputs raw/out
 
@@ -429,9 +447,13 @@ func newDataValidateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "validate",
 		Short: "Check every example against the spec",
-		Long: "Check that every example has both files, that every file is valid JSON and\n" +
-			"that every value matches the types in spec.yaml. Prints each problem and exits\n" +
-			"with an error if there are any.",
+		Long: "Check that every example has both files, that every file is valid JSON,\n" +
+			"that every value matches the types in spec.yaml, and that no two examples\n" +
+			"(in either split) have the same input but different outputs. No program can\n" +
+			"fit such a contradiction.\n\n" +
+			"Prints each problem on stdout and exits with an error if there are any.\n" +
+			"Otherwise prints the number of examples per split, and warns when there are\n" +
+			"no training or no holdout examples.",
 		Example: `  synth data validate
   synth -C path/to/project data validate`,
 		Args: cobra.NoArgs,

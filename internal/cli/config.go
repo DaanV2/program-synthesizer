@@ -26,10 +26,12 @@ const configKeysHelp = `Keys:
   options.targets           comma-separated back ends: go, rust, c
 
 Types use spec.yaml syntax on one line: int, float, bool, string, list<T>,
-[T], and records as {name: type, ...}. Quote them in the shell.`
+[T], and records as {name: type, ...}. Quote them in the shell: single quotes
+work in both PowerShell and sh.`
 
 const configSaveNote = `Saving rewrites spec.yaml. Comments and flow/block style are carried over
-for keys that still exist; comments on removed keys and blank lines are lost.`
+for keys that still exist; comments on removed keys and blank lines are lost.
+A project with spec.json is rewritten as JSON. Nothing is printed on success.`
 
 func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -42,7 +44,7 @@ func newConfigCmd() *cobra.Command {
   synth config set description "Join first and last name"
   synth config set input.tags 'list<string>'
   synth config set output '{fullName: string, isAdult: bool}'
-  synth config set options.targets go,rust
+  synth config set options.targets 'go,rust'
   synth config unset input.tags
   synth config move input.age --before first`,
 		Args: cobra.NoArgs,

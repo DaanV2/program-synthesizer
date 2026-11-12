@@ -10,7 +10,7 @@ import (
 	"synth/internal/project"
 )
 
-func newTestProject(t *testing.T) *project.Project {
+func newDataTestProject(t *testing.T) *project.Project {
 	t.Helper()
 	s := &project.Spec{
 		Name:   "sum",
@@ -38,7 +38,7 @@ func runCLI(t *testing.T, dir, stdin string, args ...string) (string, error) {
 }
 
 func TestDataAddListValidate(t *testing.T) {
-	p := newTestProject(t)
+	p := newDataTestProject(t)
 	if _, err := runCLI(t, p.Dir, "", "data", "add", "--in", `{"a": 1, "b": 2}`, "--out", "3"); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestDataAddListValidate(t *testing.T) {
 }
 
 func TestDataImportAllOrNothing(t *testing.T) {
-	p := newTestProject(t)
+	p := newDataTestProject(t)
 	src := filepath.Join(t.TempDir(), "ex.csv")
 	if err := os.WriteFile(src, []byte("a,b,out\n1,2,3\n4,5,x\n"), 0o644); err != nil {
 		t.Fatal(err)

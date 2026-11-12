@@ -260,19 +260,45 @@ func (p *Project) LoadExample(e Example) (*LoadedExample, error) {
 	return &LoadedExample{Example: e, Input: in.(map[string]any), Output: out}, nil
 }
 
-// Validate loads every example in every split and returns all problems found.
+// Validate loads every example in every split and returns all problems
+// found: unpaired files, type errors, and contradictions (the same input
+// with different outputs, which no program can fit).
 func (p *Project) Validate() []error {
 	var errs []error
+	type seen struct {
+		ex  Example
+		out string
+	}
+	byInput := map[string]seen{}
 	for _, sp := range Splits {
 		exs, pairErrs := p.Examples(sp)
 		errs = append(errs, pairErrs...)
 		for _, e := range exs {
-			if _, err := p.LoadExample(e); err != nil {
+			le, err := p.LoadExample(e)
+			if err != nil {
 				errs = append(errs, err)
+				continue
+			}
+			in, err1 := CanonicalValue(p.Spec.Input, any(le.Input))
+			out, err2 := CanonicalValue(p.Spec.Output, le.Output)
+			if err1 != nil || err2 != nil {
+				continue // already type-checked; cannot happen
+			}
+			if prev, dup := byInput[in]; dup && prev.out != out {
+				errs = append(errs, &ContradictionError{A: prev.ex, B: e})
+			} else if !dup {
+				byInput[in] = seen{e, out}
 			}
 		}
 	}
 	return errs
+}
+
+// ContradictionError reports two examples with equal inputs but different outputs.
+type ContradictionError struct{ A, B Example }
+
+func (e *ContradictionError) Error() string {
+	return fmt.Sprintf("contradiction: %s and %s have the same input but different outputs", e.A.InputPath, e.B.InputPath)
 }
 
 // WriteExample type-checks and writes an example's two files. It refuses to
@@ -300,10 +326,19 @@ func (p *Project) WriteExample(sp Split, name string, input, output any, overwri
 			return e, err
 		}
 	}
-	if err := WriteValueFile(e.InputPath, input); err != nil {
+	// Each file is written atomically; if the second fails, remove the first
+	// so no orphan is left behind (unless it existed before and we overwrote it).
+	_, inExisted := os.Stat(e.InputPath)
+	if err := WriteValueFile(e.InputPath, p.Spec.Input, input); err != nil {
 		return e, err
 	}
-	return e, WriteValueFile(e.OutputPath, output)
+	if err := WriteValueFile(e.OutputPath, p.Spec.Output, output); err != nil {
+		if inExisted != nil {
+			os.Remove(e.InputPath)
+		}
+		return e, err
+	}
+	return e, nil
 }
 
 // ValidName reports whether name is usable as an example file name.

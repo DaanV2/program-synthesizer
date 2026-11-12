@@ -136,3 +136,61 @@ func TestProjectLifecycle(t *testing.T) {
 		t.Fatalf("LoadExample = %+v, %v", le, err)
 	}
 }
+
+func TestEncodeValueOrderAndEscaping(t *testing.T) {
+	s, _ := ParseSpecYAML([]byte(sampleSpec))
+	v, _ := DecodeValue(strings.NewReader(`{"orders":[{"total":2.50,"id":1}],"tags":["a<b"],"age":3,"last":"&","first":"z"}`))
+	b, err := EncodeValue(s.Input, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{
+  "first": "z",
+  "last": "&",
+  "age": 3,
+  "tags": ["a<b"],
+  "orders": [
+    {
+      "id": 1,
+      "total": 2.50
+    }
+  ]
+}
+`
+	if string(b) != want {
+		t.Fatalf("got\n%s\nwant\n%s", b, want)
+	}
+	back, err := DecodeValue(strings.NewReader(string(b)))
+	if err != nil || s.Input.Check(back, "input") != nil {
+		t.Fatalf("encoded value does not round-trip: %v", err)
+	}
+	c1, _ := CanonicalValue(Scalar(Float), mustDecode(t, "2.50"))
+	c2, _ := CanonicalValue(Scalar(Float), mustDecode(t, "2.5"))
+	if c1 != c2 {
+		t.Fatalf("canonical floats differ: %s vs %s", c1, c2)
+	}
+}
+
+func TestValidateContradiction(t *testing.T) {
+	s, _ := ParseSpecYAML([]byte("name: x\ninput: {a: float}\noutput: int\n"))
+	p, err := Create(t.TempDir(), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.WriteExample(Train, "a", mustDecode(t, `{"a": 1.0}`), mustDecode(t, "1"), false)
+	p.WriteExample(Holdout, "b", mustDecode(t, `{"a": 1}`), mustDecode(t, "2"), false)
+	p.WriteExample(Train, "c", mustDecode(t, `{"a": 2}`), mustDecode(t, "2"), false)
+	errs := p.Validate()
+	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "contradiction") {
+		t.Fatalf("Validate = %v", errs)
+	}
+}
+
+func mustDecode(t *testing.T, s string) any {
+	t.Helper()
+	v, err := DecodeValue(strings.NewReader(s))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}

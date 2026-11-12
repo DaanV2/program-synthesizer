@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 
 	"github.com/charmbracelet/fang"
@@ -23,8 +24,16 @@ func main() {
 		fang.WithVersion(version),
 		fang.WithCommit(commit),
 		fang.WithNotifySignal(os.Interrupt), // Ctrl+C cancels cmd.Context(), so long searches can stop cleanly
+		fang.WithErrorHandler(errorHandler),
 	)
 	if err != nil {
 		os.Exit(1)
 	}
+}
+
+// errorHandler is fang's default, minus the title-casing of the message:
+// errors often start with a file path or flag, which must stay as written.
+func errorHandler(w io.Writer, styles fang.Styles, err error) {
+	styles.ErrorText = styles.ErrorText.UnsetTransform()
+	fang.DefaultErrorHandler(w, styles, err)
 }

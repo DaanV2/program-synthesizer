@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -40,13 +41,156 @@ func ReadValueFile(path string) (any, error) {
 	return v, nil
 }
 
-// WriteValueFile writes v as indented JSON with a trailing newline.
-func WriteValueFile(path string, v any) error {
-	b, err := json.MarshalIndent(v, "", "  ")
+// EncodeValue renders v (which must conform to t) as indented JSON with
+// record fields in declaration order, without HTML escaping, and with a
+// trailing newline.
+func EncodeValue(t *Type, v any) ([]byte, error) {
+	var b bytes.Buffer
+	if err := encodeValue(&b, t, v, "", false); err != nil {
+		return nil, err
+	}
+	b.WriteByte('\n')
+	return b.Bytes(), nil
+}
+
+// CanonicalValue renders v compactly with numbers normalised (1.0 and 1
+// are the same float), so equal values give equal strings.
+func CanonicalValue(t *Type, v any) (string, error) {
+	var b bytes.Buffer
+	err := encodeValue(&b, t, v, "", true)
+	return b.String(), err
+}
+
+func encodeValue(b *bytes.Buffer, t *Type, v any, indent string, canonical bool) error {
+	nl, inner, sep := "\n", indent+"  ", ": "
+	if canonical {
+		nl, inner, sep = "", "", ":"
+	}
+	switch t.Kind {
+	case Record:
+		obj, ok := v.(map[string]any)
+		if !ok {
+			return fmt.Errorf("expected object, got %s", describe(v))
+		}
+		b.WriteString("{" + nl)
+		for i, f := range t.Fields {
+			if i > 0 {
+				b.WriteString("," + nl)
+			}
+			b.WriteString(inner)
+			b.Write(jsonQuote(f.Name))
+			b.WriteString(sep)
+			if err := encodeValue(b, f.Type, obj[f.Name], inner, canonical); err != nil {
+				return err
+			}
+		}
+		if canonical {
+			b.WriteString("}")
+		} else {
+			b.WriteString("\n" + indent + "}")
+		}
+	case List:
+		items, ok := v.([]any)
+		if !ok {
+			return fmt.Errorf("expected array, got %s", describe(v))
+		}
+		if len(items) == 0 {
+			b.WriteString("[]")
+			return nil
+		}
+		// Lists of scalars stay on one line; lists of records/lists get one item per line.
+		multiline := !canonical && (t.Elem.Kind == Record || t.Elem.Kind == List)
+		itemNL, itemIndent := "", ""
+		if multiline {
+			itemNL, itemIndent = "\n", inner
+		}
+		b.WriteString("[" + itemNL)
+		for i, item := range items {
+			if i > 0 {
+				b.WriteString(",")
+				if multiline {
+					b.WriteString("\n")
+				} else if !canonical {
+					b.WriteString(" ")
+				}
+			}
+			b.WriteString(itemIndent)
+			if err := encodeValue(b, t.Elem, item, itemIndent, canonical); err != nil {
+				return err
+			}
+		}
+		if multiline {
+			b.WriteString("\n" + indent)
+		}
+		b.WriteString("]")
+	case Float:
+		n, ok := v.(json.Number)
+		if !ok {
+			return fmt.Errorf("expected number, got %s", describe(v))
+		}
+		if canonical {
+			f, err := n.Float64()
+			if err != nil {
+				return err
+			}
+			b.WriteString(strconv.FormatFloat(f, 'g', -1, 64))
+		} else {
+			b.WriteString(n.String())
+		}
+	case Int:
+		n, ok := v.(json.Number)
+		if !ok {
+			return fmt.Errorf("expected number, got %s", describe(v))
+		}
+		b.WriteString(n.String())
+	case Bool:
+		x, ok := v.(bool)
+		if !ok {
+			return fmt.Errorf("expected bool, got %s", describe(v))
+		}
+		b.WriteString(strconv.FormatBool(x))
+	case String:
+		x, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("expected string, got %s", describe(v))
+		}
+		b.Write(jsonQuote(x))
+	}
+	return nil
+}
+
+func jsonQuote(s string) []byte {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(s)
+	return bytes.TrimRight(b.Bytes(), "\n")
+}
+
+// WriteValueFile writes v as JSON (see EncodeValue) atomically: it writes a
+// temporary file next to path and renames it into place.
+func WriteValueFile(path string, t *Type, v any) error {
+	b, err := EncodeValue(t, v)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return writeFileAtomic(path, b)
+}
+
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o644)
+	defer os.Remove(tmp.Name()) // no-op after a successful rename
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // ValueError points at the part of a value that does not match its type.

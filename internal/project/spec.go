@@ -138,15 +138,5 @@ func typeJSON(t *Type) []byte {
 			return append(append([]byte("["), typeJSON(t.Elem)...), ']')
 		}
 	}
-	return jsonString(t.String())
-}
-
-// jsonString quotes s without escaping <, > and & (json.Marshal would turn
-// list<int> into list\u003cint\u003e).
-func jsonString(s string) []byte {
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(s)
-	return bytes.TrimRight(b.Bytes(), "\n")
+	return jsonQuote(t.String())
 }

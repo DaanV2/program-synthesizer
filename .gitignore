@@ -1,0 +1,17 @@
+# build output
+/bin/
+*.exe
+*.test
+*.out
+coverage.*
+
+# editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# synthesizer run output (logs, generated code)
+/out/
+*.log

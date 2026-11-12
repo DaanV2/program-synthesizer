@@ -12,7 +12,10 @@ A feature is not done until it is documented. In the same commit as the code:
 - **New or changed command, flag or behaviour** → update the matching page in
   `docs/` (and `README.md` if it is in the quick start), then run `just docs`
   to regenerate the CLI reference in `docs/cli/`. `just check` fails when the
-  generated reference is stale.
+  generated reference is stale (the test is `TestCLIReferenceUpToDate` in
+  `internal/clidocs`; `just docs-check` runs it alone). The reference is
+  built from the cobra help text, so write a good `Long` and `Example` for
+  every command, and never edit `docs/cli/` by hand.
 - **Change to the project format** (`spec.yaml`, type syntax, `data/` layout,
   validation rules) → update `docs/project-format.md`.
 - **New package or moved responsibility** → update `docs/architecture.md`.
@@ -39,11 +42,13 @@ say why.
 
 ```
 cmd/synth/        entry point: fang + cobra root, error handler
+cmd/gendocs/      writes docs/cli from the command tree (`just docs`)
 internal/cli/     cobra commands (init, config, data, solve); thin layer
+internal/clidocs/ CLI reference generator and its staleness test
 internal/project/ spec.yaml, type system, data/ layout, validation
 internal/dataio/  import sources (dirs, JSONL, CSV) and import planning
 internal/synth/   core synthesis (M1+, mostly empty so far)
-docs/             user and developer documentation
+docs/             user and developer documentation; docs/cli is generated
 ```
 
 ## Conventions

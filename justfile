@@ -42,8 +42,16 @@ fmt-check:
 fmt-check:
     $f = gofmt -l .; if ($f) { $f; exit 1 }
 
-# Everything CI would check: formatting, vet, tests
+# Everything CI would check: formatting, vet, tests (the tests include docs-check)
 check: fmt-check vet test
+
+# Regenerate the CLI reference in docs/cli from the cobra command tree
+docs:
+    go run ./cmd/gendocs docs/cli
+
+# Fail if docs/cli is out of date (also part of `just test` and `just check`)
+docs-check:
+    go test ./internal/clidocs -run TestCLIReferenceUpToDate
 
 # Tidy go.mod / go.sum
 tidy:

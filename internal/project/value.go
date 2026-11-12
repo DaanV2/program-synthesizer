@@ -3,10 +3,13 @@ package project
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 )
 
@@ -23,8 +26,9 @@ func DecodeValue(r io.Reader) (any, error) {
 		return nil, err
 	}
 	if dec.More() {
-		return nil, fmt.Errorf("trailing data after JSON value")
+		return nil, errors.New("trailing data after JSON value")
 	}
+
 	return v, nil
 }
 
@@ -38,6 +42,7 @@ func ReadValueFile(path string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+
 	return v, nil
 }
 
@@ -50,6 +55,7 @@ func EncodeValue(t *Type, v any) ([]byte, error) {
 		return nil, err
 	}
 	b.WriteByte('\n')
+
 	return b.Bytes(), nil
 }
 
@@ -58,112 +64,139 @@ func EncodeValue(t *Type, v any) ([]byte, error) {
 func CanonicalValue(t *Type, v any) (string, error) {
 	var b bytes.Buffer
 	err := encodeValue(&b, t, v, "", true)
+
 	return b.String(), err
 }
 
 func encodeValue(b *bytes.Buffer, t *Type, v any, indent string, canonical bool) error {
-	nl, inner, sep := "\n", indent+"  ", ": "
-	if canonical {
-		nl, inner, sep = "", "", ":"
-	}
+	e := valueEncoder{b: b, canonical: canonical}
+
+	return e.value(t, v, indent)
+}
+
+// valueEncoder writes typed values as JSON, either indented for files or
+// compact and normalised (canonical) for comparisons.
+type valueEncoder struct {
+	b         *bytes.Buffer
+	canonical bool
+}
+
+func (e *valueEncoder) value(t *Type, v any, indent string) error {
 	switch t.Kind {
 	case Record:
-		obj, ok := v.(map[string]any)
-		if !ok {
-			return fmt.Errorf("expected object, got %s", describe(v))
-		}
-		b.WriteString("{" + nl)
-		for i, f := range t.Fields {
-			if i > 0 {
-				b.WriteString("," + nl)
-			}
-			b.WriteString(inner)
-			b.Write(jsonQuote(f.Name))
-			b.WriteString(sep)
-			if err := encodeValue(b, f.Type, obj[f.Name], inner, canonical); err != nil {
-				return err
-			}
-		}
-		if canonical {
-			b.WriteString("}")
-		} else {
-			b.WriteString("\n" + indent + "}")
-		}
+		return e.record(t, v, indent)
 	case List:
-		items, ok := v.([]any)
-		if !ok {
-			return fmt.Errorf("expected array, got %s", describe(v))
+		return e.list(t, v, indent)
+	default:
+		return e.scalar(t.Kind, v)
+	}
+}
+
+func (e *valueEncoder) record(t *Type, v any, indent string) error {
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return fmt.Errorf("expected object, got %s", describe(v))
+	}
+	nl, inner, sep := "\n", indent+"  ", ": "
+	if e.canonical {
+		nl, inner, sep = "", "", ":"
+	}
+	e.b.WriteString("{" + nl)
+	for i, f := range t.Fields {
+		if i > 0 {
+			e.b.WriteString("," + nl)
 		}
-		if len(items) == 0 {
-			b.WriteString("[]")
-			return nil
+		e.b.WriteString(inner)
+		e.b.Write(jsonQuote(f.Name))
+		e.b.WriteString(sep)
+		if err := e.value(f.Type, obj[f.Name], inner); err != nil {
+			return err
 		}
-		// Lists of scalars stay on one line; lists of records/lists get one item per line.
-		multiline := !canonical && (t.Elem.Kind == Record || t.Elem.Kind == List)
-		itemNL, itemIndent := "", ""
-		if multiline {
-			itemNL, itemIndent = "\n", inner
+	}
+	if !e.canonical {
+		e.b.WriteString("\n" + indent)
+	}
+	e.b.WriteString("}")
+
+	return nil
+}
+
+func (e *valueEncoder) list(t *Type, v any, indent string) error {
+	items, ok := v.([]any)
+	if !ok {
+		return fmt.Errorf("expected array, got %s", describe(v))
+	}
+	if len(items) == 0 {
+		e.b.WriteString("[]")
+
+		return nil
+	}
+	// Lists of scalars stay on one line; lists of records/lists get one item per line.
+	multiline := !e.canonical && (t.Elem.Kind == Record || t.Elem.Kind == List)
+	open, sep, itemIndent, closing := "[", ", ", "", "]"
+	switch {
+	case multiline:
+		open, sep, itemIndent, closing = "[\n", ",\n", indent+"  ", "\n"+indent+"]"
+	case e.canonical:
+		sep = ","
+	}
+	e.b.WriteString(open)
+	for i, item := range items {
+		if i > 0 {
+			e.b.WriteString(sep)
 		}
-		b.WriteString("[" + itemNL)
-		for i, item := range items {
-			if i > 0 {
-				b.WriteString(",")
-				if multiline {
-					b.WriteString("\n")
-				} else if !canonical {
-					b.WriteString(" ")
-				}
-			}
-			b.WriteString(itemIndent)
-			if err := encodeValue(b, t.Elem, item, itemIndent, canonical); err != nil {
-				return err
-			}
+		e.b.WriteString(itemIndent)
+		if err := e.value(t.Elem, item, itemIndent); err != nil {
+			return err
 		}
-		if multiline {
-			b.WriteString("\n" + indent)
+	}
+	e.b.WriteString(closing)
+
+	return nil
+}
+
+func (e *valueEncoder) scalar(k Kind, v any) error {
+	switch x := v.(type) {
+	case json.Number:
+		if k != Int && k != Float {
+			break
 		}
-		b.WriteString("]")
-	case Float:
-		n, ok := v.(json.Number)
-		if !ok {
-			return fmt.Errorf("expected number, got %s", describe(v))
-		}
-		if canonical {
-			f, err := n.Float64()
+		if k == Float && e.canonical {
+			f, err := x.Float64()
 			if err != nil {
 				return err
 			}
-			b.WriteString(strconv.FormatFloat(f, 'g', -1, 64))
+			e.b.WriteString(strconv.FormatFloat(f, 'g', -1, 64))
 		} else {
-			b.WriteString(n.String())
+			e.b.WriteString(x.String())
 		}
-	case Int:
-		n, ok := v.(json.Number)
-		if !ok {
-			return fmt.Errorf("expected number, got %s", describe(v))
+
+		return nil
+	case bool:
+		if k == Bool {
+			e.b.WriteString(strconv.FormatBool(x))
+
+			return nil
 		}
-		b.WriteString(n.String())
-	case Bool:
-		x, ok := v.(bool)
-		if !ok {
-			return fmt.Errorf("expected bool, got %s", describe(v))
+	case string:
+		if k == String {
+			e.b.Write(jsonQuote(x))
+
+			return nil
 		}
-		b.WriteString(strconv.FormatBool(x))
-	case String:
-		x, ok := v.(string)
-		if !ok {
-			return fmt.Errorf("expected string, got %s", describe(v))
-		}
-		b.Write(jsonQuote(x))
 	}
-	return nil
+
+	return fmt.Errorf("expected %s, got %s", k, describe(v))
 }
 
 func jsonQuote(s string) []byte {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
-	_ = enc.Encode(s)
+	if err := enc.Encode(s); err != nil {
+		panic(err) // encoding a string into a bytes.Buffer cannot fail
+	}
+
 	return bytes.TrimRight(b.Bytes(), "\n")
 }
 
@@ -174,6 +207,7 @@ func WriteValueFile(path string, t *Type, v any) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
+
 	return writeFileAtomic(path, b)
 }
 
@@ -182,14 +216,16 @@ func writeFileAtomic(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name()) // no-op after a successful rename
+	defer func() { _ = os.Remove(tmp.Name()) }() // no-op after a successful rename
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
+
 		return err
 	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
+
 	return os.Rename(tmp.Name(), path)
 }
 
@@ -203,6 +239,7 @@ func (e *ValueError) Error() string {
 	if e.Path == "" {
 		return e.Msg
 	}
+
 	return e.Path + ": " + e.Msg
 }
 
@@ -213,67 +250,88 @@ func (t *Type) Check(v any, root string) error {
 }
 
 func (t *Type) check(v any, path string) error {
-	fail := func(format string, a ...any) error {
-		return &ValueError{Path: path, Msg: fmt.Sprintf(format, a...)}
-	}
 	if v == nil {
-		return fail("expected %s, got null", t)
+		return failAt(path, "expected %s, got null", t)
 	}
 	switch t.Kind {
-	case Int:
-		n, ok := v.(json.Number)
-		if !ok {
-			return fail("expected int, got %s", describe(v))
-		}
-		if _, err := strconv.ParseInt(n.String(), 10, 64); err != nil {
-			return fail("expected int, got %s", n)
-		}
-	case Float:
-		n, ok := v.(json.Number)
-		if !ok {
-			return fail("expected float, got %s", describe(v))
-		}
-		if _, err := n.Float64(); err != nil {
-			return fail("expected float, got %s", n)
+	case List:
+		return t.checkList(v, path)
+	case Record:
+		return t.checkRecord(v, path)
+	default:
+		return checkScalar(t.Kind, v, path)
+	}
+}
+
+func failAt(path, format string, a ...any) error {
+	return &ValueError{Path: path, Msg: fmt.Sprintf(format, a...)}
+}
+
+func checkScalar(k Kind, v any, path string) error {
+	var ok bool
+	switch k {
+	case Int, Float:
+		var n json.Number
+		if n, ok = v.(json.Number); ok {
+			var err error
+			if k == Int {
+				_, err = strconv.ParseInt(n.String(), 10, 64)
+			} else {
+				_, err = n.Float64()
+			}
+			if err != nil {
+				return failAt(path, "expected %s, got %s", k, n)
+			}
 		}
 	case Bool:
-		if _, ok := v.(bool); !ok {
-			return fail("expected bool, got %s", describe(v))
-		}
+		_, ok = v.(bool)
 	case String:
-		if _, ok := v.(string); !ok {
-			return fail("expected string, got %s", describe(v))
-		}
-	case List:
-		items, ok := v.([]any)
-		if !ok {
-			return fail("expected %s, got %s", t, describe(v))
-		}
-		for i, item := range items {
-			if err := t.Elem.check(item, fmt.Sprintf("%s[%d]", path, i)); err != nil {
-				return err
-			}
-		}
-	case Record:
-		obj, ok := v.(map[string]any)
-		if !ok {
-			return fail("expected object, got %s", describe(v))
-		}
-		for _, f := range t.Fields {
-			fv, present := obj[f.Name]
-			if !present {
-				return fail("missing field %q", f.Name)
-			}
-			if err := f.Type.check(fv, join(path, f.Name)); err != nil {
-				return err
-			}
-		}
-		for k := range obj {
-			if _, known := t.Field(k); !known {
-				return fail("unexpected field %q", k)
-			}
+		_, ok = v.(string)
+	default:
+		return failAt(path, "%s is not a scalar type", k)
+	}
+	if !ok {
+		return failAt(path, "expected %s, got %s", k, describe(v))
+	}
+
+	return nil
+}
+
+func (t *Type) checkList(v any, path string) error {
+	items, ok := v.([]any)
+	if !ok {
+		return failAt(path, "expected %s, got %s", t, describe(v))
+	}
+	for i, item := range items {
+		if err := t.Elem.check(item, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+			return err
 		}
 	}
+
+	return nil
+}
+
+func (t *Type) checkRecord(v any, path string) error {
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return failAt(path, "expected object, got %s", describe(v))
+	}
+	for _, f := range t.Fields {
+		fv, present := obj[f.Name]
+		if !present {
+			return failAt(path, "missing field %q", f.Name)
+		}
+		if err := f.Type.check(fv, join(path, f.Name)); err != nil {
+			return err
+		}
+	}
+	// Sorted so the reported field is the same on every run.
+	for _, k := range slices.Sorted(maps.Keys(obj)) {
+		if _, known := t.Field(k); !known {
+			return failAt(path, "unexpected field %q", k)
+		}
+	}
+
 	return nil
 }
 
@@ -281,6 +339,7 @@ func join(path, field string) string {
 	if path == "" {
 		return field
 	}
+
 	return path + "." + field
 }
 
@@ -297,5 +356,6 @@ func describe(v any) string {
 	case map[string]any:
 		return "object"
 	}
+
 	return fmt.Sprintf("%T", v)
 }

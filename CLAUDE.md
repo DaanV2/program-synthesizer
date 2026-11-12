@@ -30,9 +30,11 @@ say why.
 ## Environment
 
 - The user is on **Windows** (PowerShell, Windows Terminal). Use `filepath`,
-  never assume `/`, and keep `justfile` recipes working under PowerShell
+  never assume `/`, and keep `.justfile` recipes working under PowerShell
   (use `[unix]` / `[windows]` recipe variants where shells differ).
-- Go 1.25.8 or newer (`go.mod`), required by `charm.land/log/v2`.
+- Go 1.27 or newer (`go.mod`), required by `charm.land/fang/v2`.
+- The repo follows [go-tool-template](https://github.com/DaanV2/go-tool-template):
+  same layout, `.justfile`, golangci-lint config, CI and release setup.
 - **Charm libraries: v2 stack only.** Use `charm.land/log/v2`, `charm.land/huh/v2`,
   `charm.land/lipgloss/v2`, `github.com/charmbracelet/fang`. Do not add
   `github.com/charmbracelet/log`, `.../huh` (v0/v1) or `.../lipgloss` v1: they
@@ -41,9 +43,10 @@ say why.
 ## Layout
 
 ```
-cmd/synth/        entry point: fang + cobra root, error handler
-cmd/gendocs/      writes docs/cli from the command tree (`just docs`)
-internal/cli/     cobra commands (init, config, data, solve); thin layer
+main.go           entry point: calls cmd.Execute
+cmd/              cobra commands (init, config, data, solve) and fang setup; thin layer
+infrastructure/   logging setup, version info (set via -ldflags)
+tools/gendocs/    writes docs/cli from the command tree (`just docs`)
 internal/clidocs/ CLI reference generator and its staleness test
 internal/project/ spec.yaml, type system, data/ layout, validation
 internal/dataio/  import sources (dirs, JSONL, CSV) and import planning
@@ -53,12 +56,17 @@ docs/             user and developer documentation; docs/cli is generated
 
 ## Conventions
 
-- `just check` (gofmt, vet, tests, docs up to date) must pass before committing.
+- `just check` (golangci-lint, which includes formatting, plus tests and the
+  docs/cli staleness check) must pass before committing; `just ci` runs
+  everything CI does. Fix lint findings rather than adding `//nolint`; when
+  a nolint is unavoidable it needs a specific linter and an explanation.
+- White-box tests go in `*_internal_test.go`; tests that only use the
+  exported API go in a `<pkg>_test` package.
 - Error strings are lower case and wrap the file path so users can find the
   problem. fang renders errors; don't add trailing punctuation.
 - Logs (`charm.land/log/v2`) go to stderr; command results go to
   `cmd.OutOrStdout()` so they can be piped.
-- Keep logic out of `internal/cli`: put it in a package with unit tests and
+- Keep logic out of `cmd/`: put it in a package with unit tests and
   keep the cobra layer to flag parsing and printing.
 - Example files are written through `project.WriteExample` (type-checked,
   atomic, field order kept); don't write them by hand in code.

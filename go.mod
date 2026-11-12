@@ -1,12 +1,12 @@
-module synth
+module github.com/DaanV2/program-synthesizer
 
-go 1.25.8
+go 1.27.0
 
 require (
+	charm.land/fang/v2 v2.0.1
 	charm.land/huh/v2 v2.0.3
 	charm.land/lipgloss/v2 v2.0.5
 	charm.land/log/v2 v2.0.1
-	github.com/charmbracelet/fang v1.0.0
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.6

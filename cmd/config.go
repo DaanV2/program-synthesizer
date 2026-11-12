@@ -1,4 +1,4 @@
-package cli
+package cmd
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ import (
 	"charm.land/log/v2"
 	"github.com/spf13/cobra"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 const configKeysHelp = `Keys:
@@ -50,6 +50,7 @@ func newConfigCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 	}
 	cmd.AddCommand(newConfigListCmd(), newConfigGetCmd(), newConfigSetCmd(), newConfigUnsetCmd(), newConfigMoveCmd())
+
 	return cmd
 }
 
@@ -71,6 +72,7 @@ func newConfigListCmd() *cobra.Command {
 			for _, kv := range p.Spec.List() {
 				fmt.Fprintf(w, "%s = %s\n", kv.Key, kv.Value)
 			}
+
 			return nil
 		},
 	}
@@ -98,6 +100,7 @@ func newConfigGetCmd() *cobra.Command {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), v)
+
 			return nil
 		},
 	}
@@ -130,6 +133,7 @@ func newConfigSetCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&strict, "strict", false, "refuse the change if existing examples would no longer conform")
+
 	return cmd
 }
 
@@ -155,6 +159,7 @@ func newConfigUnsetCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&strict, "strict", false, "refuse the change if existing examples would no longer conform")
+
 	return cmd
 }
 
@@ -175,16 +180,19 @@ func newConfigMoveCmd() *cobra.Command {
 			if (before == "") == (after == "") {
 				return errors.New("give exactly one of --before or --after")
 			}
+
 			return changeSpec(cmd, args[0], false, func(s *project.Spec) error {
 				if before != "" {
 					return s.Move(args[0], before, false)
 				}
+
 				return s.Move(args[0], after, true)
 			})
 		},
 	}
 	cmd.Flags().StringVar(&before, "before", "", "sibling `field` to move in front of")
 	cmd.Flags().StringVar(&after, "after", "", "sibling `field` to move behind")
+
 	return cmd
 }
 
@@ -224,6 +232,7 @@ func changeSpec(cmd *cobra.Command, key string, strict bool, change func(*projec
 			if strict {
 				// fang reflows error text, so the list goes to the log.
 				log.Error(msg)
+
 				return fmt.Errorf("not changed: %d example(s) would no longer conform (--strict)", len(added))
 			}
 			log.Warn(msg + "\nfix the data or change the spec back")
@@ -233,6 +242,7 @@ func changeSpec(cmd *cobra.Command, key string, strict bool, change func(*projec
 		return err
 	}
 	log.Debug("saved", "spec", p.SpecPath, "key", key)
+
 	return nil
 }
 
@@ -247,6 +257,7 @@ func problemList(p *project.Project, problems []string) string {
 	if len(problems) > maxShownProblems {
 		fmt.Fprintf(&b, "\n  ... and %d more", len(problems)-maxShownProblems)
 	}
+
 	return b.String()
 }
 
@@ -255,6 +266,7 @@ func problemSet(errs []error) map[string]bool {
 	for _, e := range errs {
 		m[e.Error()] = true
 	}
+
 	return m
 }
 
@@ -275,6 +287,7 @@ func completeKeys(values bool) cobra.CompletionFunc {
 					}
 				}
 			}
+
 			return keys, cobra.ShellCompDirectiveNoFileComp
 		case len(args) == 1 && values:
 			if args[0] == project.KeyTargets {
@@ -284,6 +297,7 @@ func completeKeys(values bool) cobra.CompletionFunc {
 				return basicTypes, cobra.ShellCompDirectiveNoFileComp
 			}
 		}
+
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 }

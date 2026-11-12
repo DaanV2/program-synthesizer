@@ -17,11 +17,11 @@ fails. Code generation comes after it. See
 
 ## Quick start
 
-Needs Go 1.25.8 or newer and [just](https://github.com/casey/just)
+Needs Go 1.27 or newer and [just](https://github.com/casey/just)
 (`winget install Casey.Just`).
 
 ```powershell
-go install ./cmd/synth
+go install .
 synth init fullname --yes --input 'first=string,last=string' --output string
 cd fullname
 Set-Content in.json '{"first": "Ada", "last": "Lovelace"}'
@@ -45,11 +45,18 @@ example, including CSV import and the holdout split.
 
 ```text
 just          # list recipes
-just build    # build bin/synth
-just test     # run tests
+just onboard  # install golangci-lint and goreleaser
+just build    # build bin/synth (with version info)
+just test     # run tests (including the docs/cli staleness check)
+just lint     # golangci-lint
 just docs     # regenerate docs/cli after changing commands or help text
-just check    # gofmt, go vet, tests (including the docs/cli staleness check)
+just check    # lint + tests: run before committing
+just ci       # everything CI runs: tidy, fmt, lint, test, build
 ```
+
+CI runs lint and tests on Linux, macOS and Windows for every push and PR.
+To release, publish the draft release on GitHub; GoReleaser then builds and
+attaches the binaries (see [docs/architecture.md](docs/architecture.md#tooling)).
 
 [CLAUDE.md](CLAUDE.md) has the conventions; the main one is that a change
 is not done until its documentation is.

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 // ReadDirs pairs the *.json files in inDir and outDir by basename. Each pair
@@ -38,6 +38,7 @@ func ReadDirs(inDir, outDir string) (*Batch, error) {
 		outPath, ok := outs[name]
 		if !ok {
 			b.Warnings = append(b.Warnings, fmt.Sprintf("%s: no matching output in %s, skipped", inPath, outDir))
+
 			continue
 		}
 		in, errIn := project.ReadValueFile(inPath)
@@ -48,6 +49,7 @@ func ReadDirs(inDir, outDir string) (*Batch, error) {
 					b.Problems = append(b.Problems, e)
 				}
 			}
+
 			continue
 		}
 		b.Records = append(b.Records, Record{Source: inPath, Name: name, Input: in, Output: out})
@@ -60,6 +62,7 @@ func ReadDirs(inDir, outDir string) (*Batch, error) {
 	}
 	sort.Strings(orphans)
 	b.Warnings = append(b.Warnings, orphans...)
+
 	return b, nil
 }
 
@@ -83,6 +86,7 @@ func jsonFiles(dir string) (map[string]string, error) {
 		}
 		files[name] = filepath.Join(dir, e.Name())
 	}
+
 	return files, nil
 }
 
@@ -95,5 +99,6 @@ func sameDir(a, b string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
 	return os.SameFile(sa, sb), nil
 }

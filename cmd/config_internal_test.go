@@ -1,12 +1,13 @@
-package cli
+package cmd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 // newTestProject writes a project with one valid training example.
@@ -28,6 +29,7 @@ func newTestProject(t *testing.T, spec string) string {
 			t.Fatal(err)
 		}
 	}
+
 	return dir
 }
 
@@ -113,7 +115,7 @@ func TestConfigStrict(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "not changed: 1 example(s) would no longer conform") {
 		t.Fatalf("strict set: %v", err)
 	}
-	if after, _ := os.ReadFile(specPath); string(after) != string(before) {
+	if after, _ := os.ReadFile(specPath); !bytes.Equal(after, before) {
 		t.Fatal("strict refusal changed spec.yaml")
 	}
 	// A change that keeps the examples valid passes --strict.
@@ -121,8 +123,8 @@ func TestConfigStrict(t *testing.T) {
 		t.Fatalf("compatible strict change: %v", err)
 	}
 	// Problems that existed before the change do not block --strict.
-	os.WriteFile(filepath.Join(dir, "data", "train", "in", "002.json"), []byte(`{"first": 1, "age": 2}`), 0o644)
-	os.WriteFile(filepath.Join(dir, "data", "train", "out", "002.json"), []byte(`{"fullName": "x", "isAdult": true}`), 0o644)
+	writeFile(t, filepath.Join(dir, "data", "train", "in", "002.json"), `{"first": 1, "age": 2}`)
+	writeFile(t, filepath.Join(dir, "data", "train", "out", "002.json"), `{"fullName": "x", "isAdult": true}`)
 	if _, err := run(t, "-C", dir, "config", "set", "description", "x", "--strict"); err != nil {
 		t.Fatalf("unrelated strict change: %v", err)
 	}
@@ -159,7 +161,7 @@ func TestConfigErrors(t *testing.T) {
 
 func TestConfigJSONSpec(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, project.SpecJSON), []byte(`{"name": "j", "input": {"a": "int"}, "output": "int"}`), 0o644)
+	writeFile(t, filepath.Join(dir, project.SpecJSON), `{"name": "j", "input": {"a": "int"}, "output": "int"}`)
 	if _, err := run(t, "-C", dir, "config", "set", "input.b", "[{id: int}]"); err != nil {
 		t.Fatal(err)
 	}
@@ -169,5 +171,12 @@ func TestConfigJSONSpec(t *testing.T) {
 	}
 	if got := project.FormatType(p.Spec.Input); got != "{a: int, b: [{id: int}]}" {
 		t.Fatalf("input = %s", got)
+	}
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

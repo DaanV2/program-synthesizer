@@ -1,4 +1,4 @@
-<!-- Generated from the cobra command tree by `just docs`. Do not edit; change the help text in internal/cli instead. -->
+<!-- Generated from the cobra command tree by `just docs`. Do not edit; change the help text in cmd/ instead. -->
 
 ## synth data import
 
@@ -76,7 +76,7 @@ synth data import [file] [flags]
 
 ```
       --log-format string   log format: text, json, logfmt (default "text")
-      --log-level string    log level: debug, info, warn, error (default "info")
+      --log-level string    log level: debug, info, warn, error, fatal (default "info")
   -C, --project string      project directory; spec.yaml or spec.json is looked for here, then in parent directories (default ".")
 ```
 

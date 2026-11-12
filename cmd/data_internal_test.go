@@ -1,4 +1,4 @@
-package cli
+package cmd
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 func newDataTestProject(t *testing.T) *project.Project {
@@ -21,6 +21,7 @@ func newDataTestProject(t *testing.T) *project.Project {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return p
 }
 
@@ -34,6 +35,7 @@ func runCLI(t *testing.T, dir, stdin string, args ...string) (string, error) {
 	cmd.SetIn(strings.NewReader(stdin))
 	cmd.SetArgs(append([]string{"--log-level", "error", "-C", dir}, args...))
 	err := cmd.Execute()
+
 	return out.String(), err
 }
 

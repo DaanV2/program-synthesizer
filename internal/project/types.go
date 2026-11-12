@@ -55,6 +55,7 @@ func (t *Type) Field(name string) (*Field, bool) {
 			return &t.Fields[i], true
 		}
 	}
+
 	return nil, false
 }
 
@@ -68,6 +69,7 @@ func (t *Type) String() string {
 		for i, f := range t.Fields {
 			parts[i] = f.Name + ": " + f.Type.String()
 		}
+
 		return "{" + strings.Join(parts, ", ") + "}"
 	default:
 		return t.Kind.String()
@@ -83,6 +85,7 @@ func (t *Type) Equal(o *Type) bool {
 		return false
 	}
 	switch t.Kind {
+	default: // scalars: equal kinds are enough
 	case List:
 		return t.Elem.Equal(o.Elem)
 	case Record:
@@ -95,6 +98,7 @@ func (t *Type) Equal(o *Type) bool {
 			}
 		}
 	}
+
 	return true
 }
 
@@ -121,8 +125,10 @@ func ParseType(s string) (*Type, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		return ListOf(elem), nil
 	}
+
 	return nil, fmt.Errorf("unknown type %q (want int, float, bool, string, list<T>, or a mapping for a record)", s)
 }
 
@@ -139,6 +145,7 @@ func (t *Type) UnmarshalYAML(n *yaml.Node) error {
 		return err
 	}
 	*t = *parsed
+
 	return nil
 }
 
@@ -149,6 +156,7 @@ func typeFromNode(n *yaml.Node) (*Type, error) {
 		if err != nil {
 			return nil, fmt.Errorf("line %d: %w", n.Line, err)
 		}
+
 		return t, nil
 	case yaml.SequenceNode:
 		if len(n.Content) != 1 {
@@ -158,6 +166,7 @@ func typeFromNode(n *yaml.Node) (*Type, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		return ListOf(elem), nil
 	case yaml.MappingNode:
 		if len(n.Content) == 0 {
@@ -178,11 +187,13 @@ func typeFromNode(n *yaml.Node) (*Type, error) {
 			}
 			rec.Fields = append(rec.Fields, F(name, ft))
 		}
+
 		return rec, nil
 	case yaml.AliasNode:
 		return typeFromNode(n.Alias)
+	default:
+		return nil, fmt.Errorf("line %d: invalid type", n.Line)
 	}
-	return nil, fmt.Errorf("line %d: invalid type", n.Line)
 }
 
 // MarshalYAML implements yaml.Marshaler, producing the form ParseType/UnmarshalYAML read.
@@ -195,11 +206,13 @@ func (t *Type) node() *yaml.Node {
 		for _, f := range t.Fields {
 			n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: f.Name}, f.Type.node())
 		}
+
 		return n
 	case List:
 		if t.hasRecord() {
 			return &yaml.Node{Kind: yaml.SequenceNode, Style: yaml.FlowStyle, Content: []*yaml.Node{t.Elem.node()}}
 		}
+
 		return &yaml.Node{Kind: yaml.ScalarNode, Value: t.String()}
 	default:
 		return &yaml.Node{Kind: yaml.ScalarNode, Value: t.String()}
@@ -212,6 +225,8 @@ func (t *Type) hasRecord() bool {
 		return true
 	case List:
 		return t.Elem.hasRecord()
+	default: // scalars
 	}
+
 	return false
 }

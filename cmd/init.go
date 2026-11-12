@@ -1,4 +1,4 @@
-package cli
+package cmd
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 type initFlags struct {
@@ -69,7 +69,8 @@ something to PowerShell and sh. Single quotes work in both.`,
 				dir = args[0]
 			}
 			interactive := !f.yes && isTerminal(cmd.InOrStdin()) && isTerminal(cmd.OutOrStdout())
-			return runInit(cmd, dir, f, interactive)
+
+			return runInit(cmd, dir, &f, interactive)
 		},
 	}
 	fl := cmd.Flags()
@@ -80,16 +81,18 @@ something to PowerShell and sh. Single quotes work in both.`,
 	fl.StringVar(&f.targets, "targets", "", "code generation targets, comma separated: go, rust, c (default go)")
 	fl.Float64Var(&f.floatTolerance, "float-tolerance", 0, "tolerance when comparing float outputs (default: unset)")
 	fl.BoolVarP(&f.yes, "yes", "y", false, "do not ask anything; use the flags (requires --input and --output)")
+
 	return cmd
 }
 
 // isTerminal reports whether r or w is an *os.File attached to a terminal.
 func isTerminal(v any) bool {
 	f, ok := v.(*os.File)
+
 	return ok && term.IsTerminal(f.Fd())
 }
 
-func runInit(cmd *cobra.Command, dir string, f initFlags, interactive bool) error {
+func runInit(cmd *cobra.Command, dir string, f *initFlags, interactive bool) error {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return err
@@ -106,35 +109,12 @@ func runInit(cmd *cobra.Command, dir string, f initFlags, interactive bool) erro
 	}
 
 	if interactive {
-		w := &initWizard{ctx: cmd.Context(), in: cmd.InOrStdin(), out: cmd.OutOrStdout(), accessible: os.Getenv("ACCESSIBLE") != ""}
-		ok, err := w.fill(d, abs)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return errors.New("init cancelled; nothing was written")
-		}
+		err = runInitWizard(cmd, d, abs)
 	} else {
-		var missing []string
-		if len(d.Params) == 0 {
-			missing = append(missing, "--input")
-		}
-		if d.Output == nil {
-			missing = append(missing, "--output")
-		}
-		if len(missing) > 0 {
-			why := "with --yes"
-			if !f.yes {
-				why = "when stdin is not a terminal"
-			}
-			return fmt.Errorf("missing %s: required %s (see `synth init --help`)", strings.Join(missing, " and "), why)
-		}
-		if d.Name == "" {
-			return errors.New("missing --name: the directory name cannot be used as a default")
-		}
-		if len(d.Targets) == 0 {
-			d.Targets = []string{"go"}
-		}
+		err = completeFromFlags(d, f.yes)
+	}
+	if err != nil {
+		return err
 	}
 
 	spec, err := d.Build()
@@ -149,12 +129,55 @@ func runInit(cmd *cobra.Command, dir string, f initFlags, interactive bool) erro
 		return err
 	}
 	printNextSteps(cmd.OutOrStdout(), p, dir)
+
+	return nil
+}
+
+// runInitWizard lets the user fill in the rest of d interactively.
+func runInitWizard(cmd *cobra.Command, d *specDraft, abs string) error {
+	w := &initWizard{ctx: cmd.Context(), in: cmd.InOrStdin(), out: cmd.OutOrStdout(), accessible: os.Getenv("ACCESSIBLE") != ""}
+	ok, err := w.fill(d, abs)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("init cancelled; nothing was written")
+	}
+
+	return nil
+}
+
+// completeFromFlags checks that the flags alone describe a full spec and
+// fills in defaults. yes says whether --yes was given (for the error text).
+func completeFromFlags(d *specDraft, yes bool) error {
+	var missing []string
+	if len(d.Params) == 0 {
+		missing = append(missing, "--input")
+	}
+	if d.Output == nil {
+		missing = append(missing, "--output")
+	}
+	if len(missing) > 0 {
+		why := "with --yes"
+		if !yes {
+			why = "when stdin is not a terminal"
+		}
+
+		return fmt.Errorf("missing %s: required %s (see `synth init --help`)", strings.Join(missing, " and "), why)
+	}
+	if d.Name == "" {
+		return errors.New("missing --name: the directory name cannot be used as a default")
+	}
+	if len(d.Targets) == 0 {
+		d.Targets = []string{"go"}
+	}
+
 	return nil
 }
 
 // draftFromFlags fills a draft from the flags; unset flags stay empty so the
 // wizard can ask for them.
-func draftFromFlags(cmd *cobra.Command, f initFlags, absDir string) (*specDraft, error) {
+func draftFromFlags(cmd *cobra.Command, f *initFlags, absDir string) (*specDraft, error) {
 	d := &specDraft{Name: f.name, Description: f.description}
 	if d.Name == "" {
 		d.Name = defaultProjectName(absDir)
@@ -181,6 +204,7 @@ func draftFromFlags(cmd *cobra.Command, f initFlags, absDir string) (*specDraft,
 		}
 		d.FloatTolerance = f.floatTolerance
 	}
+
 	return d, nil
 }
 
@@ -204,5 +228,6 @@ func quoteArg(s string) string {
 			return `"` + s + `"`
 		}
 	}
+
 	return s
 }

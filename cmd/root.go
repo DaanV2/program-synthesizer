@@ -1,23 +1,21 @@
-// Package cli defines the synth command tree.
-package cli
+// Package cmd defines the synth command tree.
+package cmd
 
 import (
-	"fmt"
+	"context"
+	"io"
 	"os"
-	"time"
 
-	"charm.land/log/v2"
+	"charm.land/fang/v2"
 	"github.com/spf13/cobra"
-)
 
-type rootFlags struct {
-	logLevel  string
-	logFormat string
-}
+	"github.com/DaanV2/program-synthesizer/infrastructure/logging"
+	"github.com/DaanV2/program-synthesizer/infrastructure/version"
+)
 
 // NewRootCmd builds the root command with all subcommands attached.
 func NewRootCmd() *cobra.Command {
-	var f rootFlags
+	logOpts := logging.Options{}
 
 	cmd := &cobra.Command{
 		Use:   "synth",
@@ -35,13 +33,13 @@ func NewRootCmd() *cobra.Command {
   synth -C fullname data add --input in.json --output out.json
   synth -C fullname data validate`,
 		SilenceUsage: true,
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			return setupLogger(f)
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+			return logging.Setup(logOpts)
 		},
 	}
 
-	cmd.PersistentFlags().StringVar(&f.logLevel, "log-level", "info", "log level: debug, info, warn, error")
-	cmd.PersistentFlags().StringVar(&f.logFormat, "log-format", "text", "log format: text, json, logfmt")
+	cmd.PersistentFlags().StringVar(&logOpts.Level, "log-level", "info", "log level: debug, info, warn, error, fatal")
+	cmd.PersistentFlags().StringVar(&logOpts.Format, "log-format", "text", "log format: text, json, logfmt")
 	cmd.PersistentFlags().StringP(projectFlag, "C", ".", "project directory; spec.yaml or spec.json is looked for here, then in parent directories")
 
 	cmd.AddCommand(
@@ -50,33 +48,29 @@ func NewRootCmd() *cobra.Command {
 		newDataCmd(),   // data.go   — add/import/list/validate examples
 		newSolveCmd(),
 	)
+
 	return cmd
 }
 
-func setupLogger(f rootFlags) error {
-	level, err := log.ParseLevel(f.logLevel)
-	if err != nil {
-		return fmt.Errorf("invalid --log-level %q: %w", f.logLevel, err)
+// Execute runs the root command with fang.
+func Execute(ctx context.Context) error {
+	opts := []fang.Option{
+		fang.WithVersion(version.Version),
+		fang.WithNotifySignal(os.Interrupt), // Ctrl+C cancels cmd.Context(), so long searches can stop cleanly
+		fang.WithErrorHandler(errorHandler),
+	}
+	if version.Commit != "" {
+		opts = append(opts, fang.WithCommit(version.Commit))
 	}
 
-	var formatter log.Formatter
-	switch f.logFormat {
-	case "text":
-		formatter = log.TextFormatter
-	case "json":
-		formatter = log.JSONFormatter
-	case "logfmt":
-		formatter = log.LogfmtFormatter
-	default:
-		return fmt.Errorf("invalid --log-format %q: want text, json or logfmt", f.logFormat)
-	}
+	return fang.Execute(ctx, NewRootCmd(), opts...)
+}
 
-	logger := log.NewWithOptions(os.Stderr, log.Options{
-		Level:           level,
-		Formatter:       formatter,
-		ReportTimestamp: true,
-		TimeFormat:      time.TimeOnly,
-	})
-	log.SetDefault(logger)
-	return nil
+// errorHandler is fang's default, minus the title-casing of the message:
+// errors often start with a file path or flag, which must stay as written.
+//
+//nolint:gocritic // hugeParam: signature is fixed by fang.ErrorHandler
+func errorHandler(w io.Writer, styles fang.Styles, err error) {
+	styles.ErrorText = styles.ErrorText.UnsetTransform()
+	fang.DefaultErrorHandler(w, styles, err)
 }

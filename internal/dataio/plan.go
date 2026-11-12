@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 // Options control where imported records go.
@@ -47,6 +47,7 @@ func (pl *Plan) Counts() map[project.Split]int {
 	for _, e := range pl.Examples {
 		c[e.Split]++
 	}
+
 	return c
 }
 
@@ -75,72 +76,101 @@ func MakePlan(p *project.Project, recs []Record, opt Options) (*Plan, error) {
 		pl.Warnings = append(pl.Warnings, fmt.Sprintf("holdout fraction %v of %d examples rounds to 0; nothing goes to holdout", opt.HoldoutFraction, len(recs)))
 	}
 
-	// Pass 1: split, type check, keep valid source names.
-	used := map[project.Split]map[string]string{} // split -> lower-case name -> source that claimed it
+	pn := planner{p: p, pl: pl, overwrite: opt.Overwrite, used: map[project.Split]map[string]string{}}
 	for _, sp := range project.Splits {
-		used[sp] = map[string]string{}
+		pn.used[sp] = map[string]string{}
 	}
+	// Pass 1: split, type check, keep valid source names.
 	for i, r := range recs {
-		e := Planned{Record: r, Split: opt.Split}
+		sp := opt.Split
 		if holdout[i] {
-			e.Split = project.Holdout
+			sp = project.Holdout
 		}
-		if err := p.Spec.Input.Check(r.Input, "input"); err != nil {
-			pl.Problems = append(pl.Problems, &sourceError{Source: r.Source, Err: err})
-		}
-		if err := p.Spec.Output.Check(r.Output, "output"); err != nil {
-			pl.Problems = append(pl.Problems, &sourceError{Source: r.Source, Err: err})
-		}
-		switch {
-		case r.Name == "":
-		case !project.ValidName(r.Name):
-			pl.Warnings = append(pl.Warnings, fmt.Sprintf("%s: %q is not a valid example name, generating one", r.Source, r.Name))
-		default:
-			// Compare case-insensitively: Foo.json and foo.json are the
-			// same file on Windows and macOS.
-			key := strings.ToLower(r.Name)
-			if prev, dup := used[e.Split][key]; dup {
-				pl.Problems = append(pl.Problems, errAt(r.Source, "example name %q in %s is also used by %s", r.Name, e.Split, prev))
-			} else {
-				used[e.Split][key] = r.Source
-				e.Name = r.Name
-				if !opt.Overwrite && exampleExists(p, e.Split, e.Name) {
-					pl.Problems = append(pl.Problems, errAt(r.Source, "example %s/%s already exists in the project (use --overwrite to replace it)", e.Split, e.Name))
-				}
-			}
-		}
-		pl.Examples[i] = e
+		pl.Examples[i] = pn.place(r, sp)
+	}
+	// Pass 2: generate names for the rest, skipping anything taken.
+	if err := pn.generateNames(); err != nil {
+		return nil, err
 	}
 
-	// Pass 2: generate names for the rest, skipping anything taken.
+	return pl, nil
+}
+
+// planner holds the state shared by MakePlan's two passes.
+type planner struct {
+	p         *project.Project
+	pl        *Plan
+	overwrite bool
+	used      map[project.Split]map[string]string // split -> lower-case name -> source that claimed it
+}
+
+// place type-checks r and keeps its source name when that is valid and free.
+func (pn *planner) place(r Record, sp project.Split) Planned {
+	e := Planned{Record: r, Split: sp}
+	if err := pn.p.Spec.Input.Check(r.Input, "input"); err != nil {
+		pn.pl.Problems = append(pn.pl.Problems, &sourceError{Source: r.Source, Err: err})
+	}
+	if err := pn.p.Spec.Output.Check(r.Output, "output"); err != nil {
+		pn.pl.Problems = append(pn.pl.Problems, &sourceError{Source: r.Source, Err: err})
+	}
+	switch {
+	case r.Name == "":
+		return e
+	case !project.ValidName(r.Name):
+		pn.pl.Warnings = append(pn.pl.Warnings, fmt.Sprintf("%s: %q is not a valid example name, generating one", r.Source, r.Name))
+
+		return e
+	}
+	// Compare case-insensitively: Foo.json and foo.json are the same file
+	// on Windows and macOS.
+	key := strings.ToLower(r.Name)
+	if prev, dup := pn.used[sp][key]; dup {
+		pn.pl.Problems = append(pn.pl.Problems, errAt(r.Source, "example name %q in %s is also used by %s", r.Name, sp, prev))
+
+		return e
+	}
+	pn.used[sp][key] = r.Source
+	e.Name = r.Name
+	if !pn.overwrite && exampleExists(pn.p, sp, e.Name) {
+		pn.pl.Problems = append(pn.pl.Problems, errAt(r.Source, "example %s/%s already exists in the project (use --overwrite to replace it)", sp, e.Name))
+	}
+
+	return e
+}
+
+// generateNames gives every unnamed example the next free numeric name in
+// its split, continuing from project.NextName.
+func (pn *planner) generateNames() error {
 	next := map[project.Split]int{}
-	for i := range pl.Examples {
-		e := &pl.Examples[i]
+	for i := range pn.pl.Examples {
+		e := &pn.pl.Examples[i]
 		if e.Name != "" {
 			continue
 		}
 		if _, ok := next[e.Split]; !ok {
-			first, err := p.NextName(e.Split)
+			first, err := pn.p.NextName(e.Split)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			n, err := strconv.Atoi(first)
 			if err != nil {
-				return nil, fmt.Errorf("unexpected generated name %q: %w", first, err)
+				return fmt.Errorf("unexpected generated name %q: %w", first, err)
 			}
 			next[e.Split] = n
 		}
 		for {
 			name := fmt.Sprintf("%03d", next[e.Split])
 			next[e.Split]++
-			if _, taken := used[e.Split][name]; !taken && !exampleExists(p, e.Split, name) {
-				used[e.Split][name] = e.Source
+			if _, taken := pn.used[e.Split][name]; !taken && !exampleExists(pn.p, e.Split, name) {
+				pn.used[e.Split][name] = e.Source
 				e.Name = name
+
 				break
 			}
 		}
 	}
-	return pl, nil
+
+	return nil
 }
 
 // Apply writes every planned example. It refuses to run if the plan has
@@ -155,6 +185,7 @@ func Apply(p *project.Project, pl *Plan, overwrite bool) error {
 			return fmt.Errorf("writing %s/%s (from %s): %w (%d of %d examples were written before this)", e.Split, e.Name, e.Source, err, i, len(pl.Examples))
 		}
 	}
+
 	return nil
 }
 
@@ -164,6 +195,7 @@ func exampleExists(p *project.Project, sp project.Split, name string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -184,12 +216,13 @@ func HoldoutMask(n int, fraction float64, seed uint64) []bool {
 	}
 	src := rand.NewPCG(seed, 0x9e3779b97f4a7c15)
 	for i := n - 1; i > 0; i-- {
-		j := int(boundedRand(src, uint64(i+1)))
+		j := int(boundedRand(src, uint64(i+1))) //nolint:gosec // result < i+1, which is an int
 		idx[i], idx[j] = idx[j], idx[i]
 	}
 	for _, i := range idx[:k] {
 		mask[i] = true
 	}
+
 	return mask
 }
 
@@ -210,5 +243,6 @@ func countTrue(bs []bool) int {
 			n++
 		}
 	}
+
 	return n
 }

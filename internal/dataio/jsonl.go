@@ -74,6 +74,7 @@ func parseJSONLLine(text string) (Record, error) {
 		}
 		*dst = v
 	}
+
 	return rec, nil
 }
 
@@ -82,5 +83,6 @@ func decodeRaw(raw json.RawMessage) (any, error) {
 	dec.UseNumber()
 	var v any
 	err := dec.Decode(&v)
+
 	return v, err
 }

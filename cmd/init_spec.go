@@ -1,4 +1,4 @@
-package cli
+package cmd
 
 import (
 	"errors"
@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 // specDraft collects the answers of `synth init` (from flags or the wizard)
@@ -53,6 +53,7 @@ func (d *specDraft) Build() (*project.Spec, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
+
 	return s, nil
 }
 
@@ -68,6 +69,7 @@ func checkFieldName(name string, taken []project.Field) error {
 	if slices.ContainsFunc(taken, func(f project.Field) bool { return f.Name == name }) {
 		return fmt.Errorf("name %q is already used", name)
 	}
+
 	return nil
 }
 
@@ -77,6 +79,7 @@ func defaultProjectName(absDir string) string {
 	if base == "." || base == string(filepath.Separator) || strings.HasSuffix(base, ":") || base == "" {
 		return ""
 	}
+
 	return base
 }
 
@@ -97,6 +100,7 @@ func parseFieldList(s string) ([]project.Field, error) {
 		if t.Kind != project.Record {
 			return nil, fmt.Errorf("not a record: %q", s)
 		}
+
 		return t.Fields, nil
 	}
 	parts, err := splitTopLevel(s, ',')
@@ -126,6 +130,7 @@ func parseFieldList(s string) ([]project.Field, error) {
 	if len(fields) == 0 {
 		return nil, errors.New("empty field list")
 	}
+
 	return fields, nil
 }
 
@@ -152,6 +157,7 @@ func splitTopLevel(s string, sep rune) ([]string, error) {
 	if depth != 0 {
 		return nil, fmt.Errorf("unclosed bracket in %q", s)
 	}
+
 	return append(parts, s[start:]), nil
 }
 
@@ -170,6 +176,7 @@ func parseInputFlags(values []string) ([]project.Field, error) {
 			all = append(all, f)
 		}
 	}
+
 	return all, nil
 }
 
@@ -186,12 +193,14 @@ func parseOutputFlag(s string) (*project.Type, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid --output: %w", err)
 		}
+
 		return project.RecordOf(fields...), nil
 	}
 	t, err := project.ParseTypeExpr(s)
 	if err != nil {
 		return nil, fmt.Errorf("invalid --output: %w", err)
 	}
+
 	return t, nil
 }
 
@@ -204,6 +213,8 @@ func hasFloat(t *project.Type) bool {
 		return hasFloat(t.Elem)
 	case project.Record:
 		return slices.ContainsFunc(t.Fields, func(f project.Field) bool { return hasFloat(f.Type) })
+	default: // other scalars
 	}
+
 	return false
 }

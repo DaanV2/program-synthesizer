@@ -121,7 +121,9 @@ func TestProjectLifecycle(t *testing.T) {
 	if n, _ := p.NextName(Train); n != "002" {
 		t.Fatalf("NextName after write = %s", n)
 	}
-	os.WriteFile(p.ExamplePath(Train, "orphan", Input), []byte(`{}`), 0o644)
+	if err := os.WriteFile(p.ExamplePath(Train, "orphan", Input), []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	p2, err := Load(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -177,9 +179,19 @@ func TestValidateContradiction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.WriteExample(Train, "a", mustDecode(t, `{"a": 1.0}`), mustDecode(t, "1"), false)
-	p.WriteExample(Holdout, "b", mustDecode(t, `{"a": 1}`), mustDecode(t, "2"), false)
-	p.WriteExample(Train, "c", mustDecode(t, `{"a": 2}`), mustDecode(t, "2"), false)
+	for _, ex := range []struct {
+		split   Split
+		name    string
+		in, out string
+	}{
+		{Train, "a", `{"a": 1.0}`, "1"},
+		{Holdout, "b", `{"a": 1}`, "2"},
+		{Train, "c", `{"a": 2}`, "2"},
+	} {
+		if _, err := p.WriteExample(ex.split, ex.name, mustDecode(t, ex.in), mustDecode(t, ex.out), false); err != nil {
+			t.Fatal(err)
+		}
+	}
 	errs := p.Validate()
 	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "contradiction") {
 		t.Fatalf("Validate = %v", errs)
@@ -192,5 +204,6 @@ func mustDecode(t *testing.T, s string) any {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return v
 }

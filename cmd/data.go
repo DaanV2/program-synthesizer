@@ -1,4 +1,4 @@
-package cli
+package cmd
 
 import (
 	"errors"
@@ -14,8 +14,8 @@ import (
 	"charm.land/log/v2"
 	"github.com/spf13/cobra"
 
-	"synth/internal/dataio"
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/dataio"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 func newDataCmd() *cobra.Command {
@@ -32,6 +32,7 @@ func newDataCmd() *cobra.Command {
   synth data validate`,
 	}
 	cmd.AddCommand(newDataAddCmd(), newDataImportCmd(), newDataListCmd(), newDataValidateCmd())
+
 	return cmd
 }
 
@@ -72,7 +73,7 @@ func newDataAddCmd() *cobra.Command {
   # input from stdin
   echo '{"x": 3}' | synth data add --input - --out 7`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error { return runDataAdd(cmd, f) },
+		RunE: func(cmd *cobra.Command, _ []string) error { return runDataAdd(cmd, &f) },
 	}
 	fl := cmd.Flags()
 	fl.StringVar(&f.inFile, "input", "", "read the input from this JSON file ('-' for stdin)")
@@ -86,10 +87,11 @@ func newDataAddCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("output", "out")
 	cmd.MarkFlagsOneRequired("input", "in")
 	cmd.MarkFlagsOneRequired("output", "out")
+
 	return cmd
 }
 
-func runDataAdd(cmd *cobra.Command, f dataAddFlags) error {
+func runDataAdd(cmd *cobra.Command, f *dataAddFlags) error {
 	if f.inFile == "-" && f.outFile == "-" {
 		return errors.New("only one of --input and --output can read from stdin ('-')")
 	}
@@ -136,30 +138,34 @@ func runDataAdd(cmd *cobra.Command, f dataAddFlags) error {
 	w := cmd.OutOrStdout()
 	fmt.Fprintln(w, displayPath(e.InputPath))
 	fmt.Fprintln(w, displayPath(e.OutputPath))
+
 	return nil
 }
 
 // readValueArg decodes a value from a file path ('-' = stdin) or inline
 // JSON. It returns the value and a label for error messages.
-func readValueArg(cmd *cobra.Command, file, inline, inlineFlag string) (any, string, error) {
+func readValueArg(cmd *cobra.Command, file, inline, inlineFlag string) (value any, label string, err error) {
 	switch {
 	case file == "-":
 		v, err := project.DecodeValue(cmd.InOrStdin())
 		if err != nil {
 			return nil, "stdin", fmt.Errorf("reading stdin: %w", err)
 		}
+
 		return v, "stdin", nil
 	case file != "":
 		v, err := project.ReadValueFile(file)
 		if err != nil {
 			return nil, file, fmt.Errorf("reading %s: %w", file, err)
 		}
+
 		return v, file, nil
 	default:
 		v, err := project.DecodeValue(strings.NewReader(inline))
 		if err != nil {
 			return nil, inlineFlag, fmt.Errorf("invalid JSON in %s: %w", inlineFlag, err)
 		}
+
 		return v, inlineFlag, nil
 	}
 }
@@ -216,7 +222,7 @@ func newDataImportCmd() *cobra.Command {
   # from stdin
   cat examples.jsonl | synth data import - --format jsonl`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error { return runDataImport(cmd, args, f) },
+		RunE: func(cmd *cobra.Command, args []string) error { return runDataImport(cmd, args, &f) },
 	}
 	fl := cmd.Flags()
 	fl.StringVar(&f.inputs, "inputs", "", "directory of input *.json files (with --outputs)")
@@ -228,35 +234,46 @@ func newDataImportCmd() *cobra.Command {
 	fl.BoolVar(&f.overwrite, "overwrite", false, "replace existing examples with the same name")
 	fl.BoolVarP(&f.dryRun, "dry-run", "n", false, "check everything and show what would be written, but write nothing")
 	cmd.MarkFlagsRequiredTogether("inputs", "outputs")
+
 	return cmd
 }
 
-func runDataImport(cmd *cobra.Command, args []string, f dataImportFlags) error {
-	sp, err := project.ParseSplit(f.split)
+// checkImportFlags validates flag combinations before anything is read.
+// useDirs reports whether the source is --inputs/--outputs rather than a file.
+func checkImportFlags(cmd *cobra.Command, args []string, f *dataImportFlags) (sp project.Split, useDirs bool, err error) {
+	sp, err = project.ParseSplit(f.split)
 	if err != nil {
-		return err
+		return "", false, err
 	}
 	if f.holdout != 0 {
 		if f.holdout < 0 || f.holdout > 1 {
-			return fmt.Errorf("the --holdout fraction must be between 0 and 1, got %v", f.holdout)
+			return "", false, fmt.Errorf("the --holdout fraction must be between 0 and 1, got %v", f.holdout)
 		}
 		if sp == project.Holdout {
-			return errors.New("cannot combine --holdout with --split holdout (--holdout already sends a fraction to holdout)")
+			return "", false, errors.New("cannot combine --holdout with --split holdout (--holdout already sends a fraction to holdout)")
 		}
 	} else if cmd.Flags().Changed("seed") {
-		return errors.New("the --seed flag only applies together with --holdout")
+		return "", false, errors.New("the --seed flag only applies together with --holdout")
 	}
 
-	useDirs := f.inputs != "" || f.outputs != ""
+	useDirs = f.inputs != "" || f.outputs != ""
 	switch {
 	case useDirs && len(args) > 0:
-		return fmt.Errorf("give either a file (%s) or --inputs/--outputs, not both", args[0])
+		return "", false, fmt.Errorf("give either a file (%s) or --inputs/--outputs, not both", args[0])
 	case useDirs && f.format != "":
-		return errors.New("the --format flag applies to a file source, not to --inputs/--outputs")
+		return "", false, errors.New("the --format flag applies to a file source, not to --inputs/--outputs")
 	case !useDirs && len(args) == 0:
-		return errors.New("nothing to import: give a .jsonl or .csv file, or --inputs DIR --outputs DIR")
+		return "", false, errors.New("nothing to import: give a .jsonl or .csv file, or --inputs DIR --outputs DIR")
 	}
 
+	return sp, useDirs, nil
+}
+
+func runDataImport(cmd *cobra.Command, args []string, f *dataImportFlags) error {
+	sp, useDirs, err := checkImportFlags(cmd, args, f)
+	if err != nil {
+		return err
+	}
 	p, err := loadProject(cmd)
 	if err != nil {
 		return err
@@ -287,14 +304,8 @@ func runDataImport(cmd *cobra.Command, args []string, f dataImportFlags) error {
 	for _, w := range plan.Warnings {
 		log.Warn(w)
 	}
-	problems := slices.Concat(batch.Problems, plan.Problems)
-	if len(problems) > 0 {
-		dataio.SortProblems(problems)
-		for _, e := range problems {
-			log.Error(e.Error())
-		}
-		return fmt.Errorf("found %d problem(s) in %d example(s); nothing was written",
-			len(problems), dataio.CountSources(problems))
+	if err := reportImportProblems(slices.Concat(batch.Problems, plan.Problems)); err != nil {
+		return err
 	}
 	if len(plan.Examples) == 0 {
 		return errors.New("no examples found to import")
@@ -306,13 +317,30 @@ func runDataImport(cmd *cobra.Command, args []string, f dataImportFlags) error {
 			fmt.Fprintf(w, "%s -> %s/%s\n", e.Source, e.Split, e.Name)
 		}
 		fmt.Fprintf(w, "dry run: would import %s\n", formatCounts(plan.Counts()))
+
 		return nil
 	}
 	if err := dataio.Apply(p, plan, f.overwrite); err != nil {
 		return err
 	}
 	fmt.Fprintf(w, "imported %s\n", formatCounts(plan.Counts()))
+
 	return nil
+}
+
+// reportImportProblems logs every problem in source order and returns an
+// error summarising them, or nil if there are none.
+func reportImportProblems(problems []error) error {
+	if len(problems) == 0 {
+		return nil
+	}
+	dataio.SortProblems(problems)
+	for _, e := range problems {
+		log.Error(e.Error())
+	}
+
+	return fmt.Errorf("found %d problem(s) in %d example(s); nothing was written",
+		len(problems), dataio.CountSources(problems))
 }
 
 func readImportFile(cmd *cobra.Command, p *project.Project, path, format string) (*dataio.Batch, error) {
@@ -326,6 +354,7 @@ func readImportFile(cmd *cobra.Command, p *project.Project, path, format string)
 			if path == "-" {
 				return nil, errors.New("reading from stdin needs --format jsonl or --format csv")
 			}
+
 			return nil, fmt.Errorf("cannot tell the format of %s from its extension; use --format jsonl or --format csv", path)
 		}
 	}
@@ -342,22 +371,24 @@ func readImportFile(cmd *cobra.Command, p *project.Project, path, format string)
 		if err != nil {
 			return nil, err
 		}
-		defer fh.Close()
+		defer func() { _ = fh.Close() }() // read-only
 		r = fh
 	}
 	if format == "csv" {
 		return dataio.ReadCSV(r, source, p.Spec.Input, p.Spec.Output)
 	}
+
 	return dataio.ReadJSONL(r, source)
 }
 
 func formatCounts(c map[project.Split]int) string {
 	total := 0
-	var parts []string
+	parts := make([]string, 0, len(project.Splits))
 	for _, sp := range project.Splits {
 		total += c[sp]
 		parts = append(parts, fmt.Sprintf("%d %s", c[sp], sp))
 	}
+
 	return fmt.Sprintf("%d example(s): %s", total, strings.Join(parts, ", "))
 }
 
@@ -380,6 +411,7 @@ func newDataListCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&split, "split", "", "only list this split: train or holdout (default: both)")
 	cmd.Flags().IntVar(&width, "width", 40, "truncate previews to this many characters (0 = no limit)")
+
 	return cmd
 }
 
@@ -414,6 +446,7 @@ func runDataList(cmd *cobra.Command, split string, width int) error {
 	w := cmd.OutOrStdout()
 	if len(rows) == 0 {
 		fmt.Fprintln(w, "no examples (add some with `synth data add` or `synth data import`)")
+
 		return nil
 	}
 	header := lipgloss.NewStyle().Bold(true).Padding(0, 1)
@@ -426,9 +459,11 @@ func runDataList(cmd *cobra.Command, split string, width int) error {
 			if row == table.HeaderRow {
 				return header
 			}
+
 			return cell
 		})
 	_, err = lipgloss.Fprintln(w, t)
+
 	return err
 }
 
@@ -436,8 +471,10 @@ func previewFile(path string, t *project.Type, width int) string {
 	v, err := project.ReadValueFile(path)
 	if err != nil {
 		log.Warn("cannot read example file", "err", err)
+
 		return "(unreadable)"
 	}
+
 	return dataio.Preview(v, t, width)
 }
 
@@ -472,6 +509,7 @@ func runDataValidate(cmd *cobra.Command, _ []string) error {
 		for _, e := range problems {
 			fmt.Fprintln(w, displayErr(e))
 		}
+
 		return fmt.Errorf("found %d problem(s)", len(problems))
 	}
 	counts := map[project.Split]int{}
@@ -486,6 +524,7 @@ func runDataValidate(cmd *cobra.Command, _ []string) error {
 	case counts[project.Holdout] == 0:
 		log.Warn("no holdout examples: overfitting will go unnoticed (try `synth data import --holdout 0.2`)")
 	}
+
 	return nil
 }
 
@@ -502,6 +541,7 @@ func displayPath(path string) string {
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return path
 	}
+
 	return rel
 }
 
@@ -512,10 +552,12 @@ func displayErr(err error) string {
 	if !ok || !filepath.IsAbs(path) {
 		return msg
 	}
+
 	return displayPath(path) + ": " + rest
 }
 
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
+
 	return err == nil
 }

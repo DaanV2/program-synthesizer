@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 // CSV column names for the output: "out" for a scalar output, "out.<field>"
@@ -50,6 +50,7 @@ func CSVColumns(input, output *project.Type) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("CSV import needs a scalar output or a record of scalars, but output is %s (use JSONL or directories instead)", output)
 	}
+
 	return cols, nil
 }
 
@@ -57,7 +58,9 @@ func isScalar(t *project.Type) bool {
 	switch t.Kind {
 	case project.Int, project.Float, project.Bool, project.String:
 		return true
+	default: // list, record
 	}
+
 	return false
 }
 
@@ -110,6 +113,7 @@ func ReadCSV(r io.Reader, source string, input, output *project.Type) (*Batch, e
 		rec, problems := csvRecord(row, cols, loc)
 		if len(problems) > 0 {
 			b.Problems = append(b.Problems, problems...)
+
 			continue
 		}
 		b.Records = append(b.Records, rec)
@@ -150,6 +154,7 @@ func mapHeader(header, want []string, input, output *project.Type) ([]csvColumn,
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("missing column(s) %s", strings.Join(missing, ", "))
 	}
+
 	return cols, nil
 }
 
@@ -167,6 +172,7 @@ func csvRecord(row []string, cols []csvColumn, loc string) (Record, []error) {
 		v, err := parseCell(row[i], c.typ.Kind)
 		if err != nil {
 			problems = append(problems, errAt(loc, "column %q: %v", c.name, err))
+
 			continue
 		}
 		switch {
@@ -185,11 +191,12 @@ func csvRecord(row []string, cols []csvColumn, loc string) (Record, []error) {
 	if outRec != nil {
 		rec.Output = outRec
 	}
+
 	return rec, problems
 }
 
 // jsonNumberRe matches the JSON number grammar.
-var jsonNumberRe = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
+var jsonNumberRe = regexp.MustCompile(`^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$`)
 
 // parseCell converts one CSV cell to the value DecodeValue would produce
 // for the same JSON (json.Number for numbers).
@@ -207,6 +214,7 @@ func parseCell(cell string, k project.Kind) (any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid int %q", cell)
 		}
+
 		return json.Number(strconv.FormatInt(n, 10)), nil
 	case project.Float:
 		f, err := strconv.ParseFloat(s, 64)
@@ -216,13 +224,16 @@ func parseCell(cell string, k project.Kind) (any, error) {
 		if jsonNumberRe.MatchString(s) {
 			return json.Number(s), nil // keep "2.50" as written
 		}
+
 		return json.Number(strconv.FormatFloat(f, 'g', -1, 64)), nil
 	case project.Bool:
 		v, err := strconv.ParseBool(s)
 		if err != nil {
 			return nil, fmt.Errorf("invalid bool %q (want true/false or 1/0)", cell)
 		}
+
 		return v, nil
+	default:
+		return nil, fmt.Errorf("unsupported type %s", k)
 	}
-	return nil, fmt.Errorf("unsupported type %s", k)
 }

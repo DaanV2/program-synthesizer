@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 
-	"synth/internal/clidocs"
+	"github.com/DaanV2/program-synthesizer/internal/clidocs"
 )
 
 func main() {

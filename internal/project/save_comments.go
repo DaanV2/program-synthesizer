@@ -28,7 +28,8 @@ func (p *Project) SaveKeepingComments() error {
 	if err != nil {
 		return p.Save()
 	}
-	return os.WriteFile(p.SpecPath, b, 0o644)
+
+	return writeFileAtomic(p.SpecPath, b)
 }
 
 // MergeYAMLComments encodes s as YAML and copies comments and node styles
@@ -55,6 +56,7 @@ func MergeYAMLComments(old []byte, s *Spec) ([]byte, error) {
 	if err := enc.Close(); err != nil {
 		return nil, err
 	}
+
 	return buf.Bytes(), nil
 }
 
@@ -85,6 +87,7 @@ func mergeNode(old, nw *yaml.Node) {
 				if old.Content[j].Value == key {
 					copyComments(old.Content[j], nw.Content[i])
 					mergeNode(old.Content[j+1], nw.Content[i+1])
+
 					break
 				}
 			}
@@ -100,5 +103,6 @@ func mergeNode(old, nw *yaml.Node) {
 		if old.Tag == nw.Tag && old.Style != 0 {
 			nw.Style = old.Style
 		}
+	case yaml.AliasNode: // the encoder never produces aliases
 	}
 }

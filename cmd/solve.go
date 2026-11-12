@@ -1,4 +1,4 @@
-package cli
+package cmd
 
 import (
 	"errors"
@@ -28,5 +28,6 @@ func newSolveCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&timeout, "timeout", "30s", "search time budget")
+
 	return cmd
 }

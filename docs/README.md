@@ -10,7 +10,7 @@
   milestones.
 - [CLI reference](cli/synth.md): one page per command, generated from the
   help text. Do not edit these pages; change the help text in
-  `internal/cli` and run `just docs`.
+  `cmd/` and run `just docs`.
 - [Design](../spec.md): how the synthesizer is meant to work.
 
 The CLI reference shows what the cobra command tree defines. Three things

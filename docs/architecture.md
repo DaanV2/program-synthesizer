@@ -8,26 +8,31 @@ fits together.
 ## Packages
 
 ```text
-cmd/synth/         main: runs the cobra tree through fang
-cmd/gendocs/       main: writes the CLI reference in docs/cli (`just docs`)
-internal/cli/      cobra commands: flag parsing and printing only
-internal/project/  spec, type system, values, data/ layout, validation
-internal/dataio/   import sources (folders, JSONL, CSV) and import planning
-internal/clidocs/  Markdown generation for docs/cli, and its staleness test
-internal/synth/    the synthesizer (M1 onwards); empty so far
+main.go                  entry point: calls cmd.Execute
+cmd/                     cobra commands (flag parsing and printing only), fang setup
+infrastructure/logging/  charm log setup for --log-level / --log-format
+infrastructure/version/  version and commit, injected with -ldflags
+internal/project/        spec, type system, values, data/ layout, validation
+internal/dataio/         import sources (folders, JSONL, CSV) and import planning
+internal/clidocs/        Markdown generation for docs/cli, and its staleness test
+internal/synth/          the synthesizer (M1 onwards); empty so far
+tools/gendocs/           writes the CLI reference in docs/cli (`just docs`)
 ```
 
-Imports go one way: `cli` uses `dataio` and `project`; `dataio` uses
-`project`; `project` uses neither. `clidocs` uses `cli` to build the same
-command tree the binary runs.
+The layout follows [go-tool-template](https://github.com/DaanV2/go-tool-template).
+Imports go one way: `cmd` uses `dataio`, `project` and `infrastructure`;
+`dataio` uses `project`; `project` uses neither. `clidocs` uses `cmd` to
+build the same command tree the binary runs.
 
-**cmd/synth** calls `fang.Execute` with `cli.NewRootCmd()`. fang adds the
+**main.go** calls `cmd.Execute`, which runs `cmd.NewRootCmd()` through
+`fang.Execute` (`charm.land/fang/v2`) with the version from
+`infrastructure/version`. fang adds the
 `--version` flag, the hidden `man` command, styled help and error output, and
 cancels the command's context on Ctrl+C. The custom error handler only stops
 fang from title-casing messages, because they often start with a path or a
 flag.
 
-**internal/cli** holds one file per command group: `init.go` (plus
+**cmd** holds one file per command group: `init.go` (plus
 `init_spec.go` for parsing `--input`/`--output` into a `specDraft`,
 `init_form.go` for the line-by-line wizard and `init_tui.go` for the
 full-screen one), `config.go`, `data.go`, `solve.go`. `project.go` has
@@ -149,8 +154,8 @@ flow/block style from the old YAML onto the keys that still exist.
 ## Tests
 
 Each package has unit tests next to the code. Command tests in
-`internal/cli` build the tree with `NewRootCmd`, call `SetArgs`, `SetIn` and
-`SetOut`, and run `Execute` without fang (see `runCLI` in `data_test.go`).
+`cmd` build the tree with `NewRootCmd`, call `SetArgs`, `SetIn` and
+`SetOut`, and run `Execute` without fang (see `runCLI` in `data_internal_test.go`).
 The wizard is tested in accessible mode, which reads plain lines from stdin.
 
 `internal/clidocs` has `TestCLIReferenceUpToDate`, which regenerates the
@@ -162,8 +167,8 @@ It runs with `go test ./...`, so `just test` and `just check` include it;
 ## The CLI reference
 
 `docs/cli/` is generated, one page per command, by `internal/clidocs`
-using `github.com/spf13/cobra/doc` on the tree from `cli.NewRootCmd`.
-`cmd/gendocs` is a separate program rather than a hidden `synth gen-docs`
+using `github.com/spf13/cobra/doc` on the tree from `cmd.NewRootCmd`.
+`tools/gendocs` is a separate program rather than a hidden `synth gen-docs`
 command, so the shipped binary and its command tree carry no documentation
 tooling. The generator:
 
@@ -184,11 +189,32 @@ tables and flag forms by two spaces (they become code blocks), and give
 every command a `Long` and an `Example`. Quote example arguments with
 single quotes so they work in PowerShell and sh.
 
+## Tooling
+
+- **Lint and format:** golangci-lint v2 with the config from go-tool-template
+  (`.golangci.yml`; gofumpt and goimports as formatters). Install with
+  `just onboard`, run with `just lint`, auto-fix with `just lint-fix`,
+  format with `just fmt`. Deviations from the template are commented in the
+  config: three gosec rules about file paths and permissions are off
+  because this tool's job is reading and writing the user's own files, a
+  `default:` case counts as exhaustive, and `fmt.Fprint*` results need not
+  be checked. White-box tests live in `*_internal_test.go` files, the
+  standard exception to the `testpackage` linter.
+- **CI** (`.github/workflows/ci.yml`): go.mod tidy check, golangci-lint,
+  tests on Linux, macOS and Windows (race detector on Linux), build,
+  `goreleaser check`.
+- **Releases:** release-drafter keeps a draft release up to date from merged
+  PR labels; publishing it runs GoReleaser (`.goreleaser.yaml`), which builds
+  linux/darwin/windows for amd64 and arm64 and uploads the archives.
+  `just snapshot` builds the same archives locally into `dist/`.
+- **Versions:** `just build` and GoReleaser set `infrastructure/version`
+  through `-ldflags`; a plain `go build` reports `dev`.
+
 ## Adding a command
 
 1. Write the logic in `internal/project`, `internal/dataio` or a new
-   package, with unit tests. Keep `internal/cli` to flags and printing.
-2. Add a `newXxxCmd()` in `internal/cli` and attach it in `NewRootCmd` or
+   package, with unit tests. Keep `cmd` to flags and printing.
+2. Add a `newXxxCmd()` in `cmd` and attach it in `NewRootCmd` or
    its parent command. Use `loadProject(cmd)` if it works on a project.
    Print results to `cmd.OutOrStdout()`, log to `log`, return errors.
 3. Give it `Short`, `Long` and `Example`. These are the documentation: they

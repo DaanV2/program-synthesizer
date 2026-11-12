@@ -51,6 +51,7 @@ func (s *Spec) Validate() error {
 			errs = append(errs, fmt.Errorf("options.targets: unknown target %q (known: %v)", t, KnownTargets))
 		}
 	}
+
 	return errors.Join(errs...)
 }
 
@@ -62,6 +63,7 @@ func ParseSpecYAML(b []byte) (*Spec, error) {
 	if err := dec.Decode(&s); err != nil {
 		return nil, err
 	}
+
 	return &s, s.Validate()
 }
 
@@ -71,6 +73,7 @@ func ParseSpecJSON(b []byte) (*Spec, error) {
 	if !json.Valid(b) {
 		return nil, errors.New("invalid JSON")
 	}
+
 	return ParseSpecYAML(b)
 }
 
@@ -82,6 +85,7 @@ func (s *Spec) EncodeYAML() ([]byte, error) {
 	if err := enc.Encode(s); err != nil {
 		return nil, err
 	}
+
 	return buf.Bytes(), enc.Close()
 }
 
@@ -96,11 +100,9 @@ func (s *Spec) EncodeJSON() ([]byte, error) {
 		}
 		buf.WriteString("\n")
 	}
-	name, _ := json.Marshal(s.Name)
-	entries := [][2]any{{"name", name}}
+	entries := [][2]any{{"name", jsonQuote(s.Name)}}
 	if s.Description != "" {
-		d, _ := json.Marshal(s.Description)
-		entries = append(entries, [2]any{"description", d})
+		entries = append(entries, [2]any{"description", jsonQuote(s.Description)})
 	}
 	entries = append(entries, [2]any{"input", typeJSON(s.Input)}, [2]any{"output", typeJSON(s.Output)})
 	if s.Options.FloatTolerance != 0 || len(s.Options.Targets) > 0 {
@@ -114,6 +116,7 @@ func (s *Spec) EncodeJSON() ([]byte, error) {
 		writeKV(e[0].(string), e[1].([]byte), i == len(entries)-1)
 	}
 	buf.WriteString("}\n")
+
 	return buf.Bytes(), nil
 }
 
@@ -132,11 +135,14 @@ func typeJSON(t *Type) []byte {
 			fmt.Fprintf(&b, "%q: %s", f.Name, typeJSON(f.Type))
 		}
 		b.WriteString("}")
+
 		return b.Bytes()
 	case List:
 		if t.hasRecord() {
 			return append(append([]byte("["), typeJSON(t.Elem)...), ']')
 		}
+	default: // scalars
 	}
+
 	return jsonQuote(t.String())
 }

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 func scalarSpec() *project.Spec {
@@ -30,6 +30,7 @@ func newProject(t *testing.T, s *project.Spec) *project.Project {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return p
 }
 
@@ -48,6 +49,7 @@ func joinErrs(errs []error) string {
 	for _, e := range errs {
 		s = append(s, e.Error())
 	}
+
 	return strings.Join(s, "\n")
 }
 
@@ -223,7 +225,7 @@ func TestHoldoutMaskDeterministic(t *testing.T) {
 
 var pinnedMask = []int{3, 4, 8}
 
-func rec(src, name string, x any, out any) Record {
+func rec(src, name string, x, out any) Record {
 	return Record{Source: src, Name: name, Input: map[string]any{"x": x}, Output: out}
 }
 

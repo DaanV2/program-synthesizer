@@ -1,4 +1,4 @@
-package cli
+package cmd
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 
 	"charm.land/huh/v2"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 // maxSlots is how many input parameters (and output fields) the one-form
@@ -59,6 +59,7 @@ func newWizardState(d *specDraft) *wizardState {
 	if len(st.Targets) == 0 {
 		st.Targets = []string{"go"}
 	}
+
 	return st
 }
 
@@ -67,6 +68,7 @@ func newSlots() []typeSlot {
 	for i := range s {
 		s[i].Choice = basicTypes[0]
 	}
+
 	return s
 }
 
@@ -78,6 +80,7 @@ func slotVisible(slots []typeSlot, i int) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -86,6 +89,7 @@ func slotType(s typeSlot) (*project.Type, error) {
 	if s.Choice == customType {
 		return project.ParseTypeExpr(s.Custom)
 	}
+
 	return project.ParseTypeExpr(s.Choice)
 }
 
@@ -106,6 +110,7 @@ func collectFields(slots []typeSlot) ([]project.Field, error) {
 		}
 		fields = append(fields, project.F(name, t))
 	}
+
 	return fields, nil
 }
 
@@ -121,6 +126,7 @@ func (st *wizardState) outputType() (*project.Type, error) {
 	if len(fields) == 0 {
 		return nil, errors.New("output record needs at least one field")
 	}
+
 	return project.RecordOf(fields...), nil
 }
 
@@ -152,12 +158,13 @@ func (st *wizardState) apply(d *specDraft) error {
 	}
 	d.FloatTolerance = tol
 	d.Targets = slices.Clone(st.Targets)
+
 	return nil
 }
 
 // preview renders the spec the current answers would produce.
-func (st *wizardState) preview(base specDraft) string {
-	d := base
+func (st *wizardState) preview(base *specDraft) string {
+	d := *base
 	if err := st.apply(&d); err != nil {
 		return "Cannot build the spec yet: " + err.Error()
 	}
@@ -169,6 +176,7 @@ func (st *wizardState) preview(base specDraft) string {
 	if err != nil {
 		return err.Error()
 	}
+
 	return string(b)
 }
 
@@ -186,6 +194,7 @@ func (w *initWizard) fillForm(d *specDraft, dir string) (bool, error) {
 				if strings.TrimSpace(s) == "" && defName == "" {
 					return errors.New("name is required")
 				}
+
 				return nil
 			}),
 		huh.NewInput().
@@ -224,6 +233,7 @@ func (w *initWizard) fillForm(d *specDraft, dir string) (bool, error) {
 			return hasFloat(d.Output)
 		}
 		t, err := st.outputType()
+
 		return err == nil && hasFloat(t)
 	}
 	groups = append(groups,
@@ -233,6 +243,7 @@ func (w *initWizard) fillForm(d *specDraft, dir string) (bool, error) {
 			Value(&st.Tolerance).
 			Validate(func(s string) error {
 				_, err := parseTolerance(s)
+
 				return err
 			})).
 			Title("Options").
@@ -245,13 +256,14 @@ func (w *initWizard) fillForm(d *specDraft, dir string) (bool, error) {
 				if len(v) == 0 {
 					return errors.New("pick at least one target")
 				}
+
 				return nil
 			})).
 			Title("Options"),
 		huh.NewGroup(
 			huh.NewNote().
 				Title("spec.yaml").
-				DescriptionFunc(func() string { return st.preview(*d) }, st),
+				DescriptionFunc(func() string { return st.preview(d) }, st),
 			huh.NewConfirm().
 				Title("Create the project?").
 				Affirmative("Create").
@@ -266,6 +278,7 @@ func (w *initWizard) fillForm(d *specDraft, dir string) (bool, error) {
 						return err
 					}
 					_, err := dd.Build()
+
 					return err
 				}),
 		),
@@ -280,6 +293,7 @@ func (w *initWizard) fillForm(d *specDraft, dir string) (bool, error) {
 	if strings.TrimSpace(st.Name) == "" {
 		st.Name = defName
 	}
+
 	return true, st.apply(d)
 }
 
@@ -288,7 +302,7 @@ func (w *initWizard) fillForm(d *specDraft, dir string) (bool, error) {
 // a single value).
 func slotGroups(slots []typeSlot, title, noun, help string, hideAll func() bool) []*huh.Group {
 	hidden := func() bool { return hideAll != nil && hideAll() }
-	var groups []*huh.Group
+	groups := make([]*huh.Group, 0, 3*len(slots))
 	for i := range slots {
 		s := &slots[i]
 		desc := help
@@ -311,12 +325,14 @@ func slotGroups(slots []typeSlot, title, noun, help string, hideAll func() bool)
 						if i == 0 {
 							return fmt.Errorf("at least one %s is required", noun)
 						}
+
 						return nil
 					}
 					var earlier []project.Field
 					for _, o := range slots[:i] {
 						earlier = append(earlier, project.F(strings.TrimSpace(o.Name), nil))
 					}
+
 					return checkFieldName(v, earlier)
 				})).
 				WithHideFunc(func() bool { return !visible() }),
@@ -328,12 +344,14 @@ func slotGroups(slots []typeSlot, title, noun, help string, hideAll func() bool)
 				WithHideFunc(func() bool { return !named() || s.Choice != customType }),
 		)
 	}
+
 	return groups
 }
 
 func typeSelect(title string, value *string) *huh.Select[string] {
 	opts := huh.NewOptions(basicTypes...)
 	opts = append(opts, huh.NewOption("custom… (record, nested list, …)", customType))
+
 	return huh.NewSelect[string]().Title(title).Options(opts...).Value(value)
 }
 
@@ -345,6 +363,7 @@ func customTypeInput(title string, value *string) *huh.Input {
 		Value(value).
 		Validate(func(s string) error {
 			_, err := project.ParseTypeExpr(s)
+
 			return err
 		})
 }

@@ -52,7 +52,7 @@ type sourceError struct {
 func (e *sourceError) Error() string { return e.Source + ": " + e.Err.Error() }
 func (e *sourceError) Unwrap() error { return e.Err }
 
-func errAt(source string, format string, a ...any) error {
+func errAt(source, format string, a ...any) error {
 	return &sourceError{Source: source, Err: fmt.Errorf(format, a...)}
 }
 
@@ -70,6 +70,7 @@ func SortProblems(errs []error) {
 		if c := strings.Compare(fa, fb); c != 0 {
 			return c
 		}
+
 		return la - lb
 	})
 }
@@ -83,6 +84,7 @@ func CountSources(errs []error) int {
 		var se *sourceError
 		if !errors.As(e, &se) {
 			n++
+
 			continue
 		}
 		if !seen[se.Source] {
@@ -90,10 +92,11 @@ func CountSources(errs []error) int {
 			n++
 		}
 	}
+
 	return n
 }
 
-func sourceKey(err error) (string, int) {
+func sourceKey(err error) (source string, line int) {
 	var se *sourceError
 	if !errors.As(err, &se) {
 		return "", 0
@@ -106,5 +109,6 @@ func sourceKey(err error) (string, int) {
 	if convErr != nil {
 		return se.Source, 0
 	}
+
 	return se.Source[:i], line
 }

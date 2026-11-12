@@ -1,4 +1,4 @@
-package cli
+package cmd
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"testing"
 	"testing/iotest"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 func TestParseFieldList(t *testing.T) {
@@ -27,6 +27,7 @@ func TestParseFieldList(t *testing.T) {
 		fields, err := parseFieldList(in)
 		if err != nil {
 			t.Errorf("%q: %v", in, err)
+
 			continue
 		}
 		if got := project.FormatType(project.RecordOf(fields...)); got != want {
@@ -76,6 +77,7 @@ func TestParseInputAndOutputFlags(t *testing.T) {
 		typ, err := parseOutputFlag(in)
 		if err != nil {
 			t.Errorf("%q: %v", in, err)
+
 			continue
 		}
 		if got := project.FormatType(typ); got != want {
@@ -217,6 +219,7 @@ func run(t *testing.T, args ...string) (string, error) {
 	cmd.SetIn(strings.NewReader("")) // not a terminal
 	cmd.SetArgs(append([]string{"--log-level", "error"}, args...))
 	err := cmd.ExecuteContext(context.Background())
+
 	return out.String(), err
 }
 
@@ -319,7 +322,7 @@ func TestWizardState(t *testing.T) {
 			t.Errorf("%s = %q, want %q", key, got, want)
 		}
 	}
-	if p := st.preview(specDraft{}); !strings.Contains(p, "sum: float") {
+	if p := st.preview(&specDraft{}); !strings.Contains(p, "sum: float") {
 		t.Errorf("preview:\n%s", p)
 	}
 
@@ -341,7 +344,7 @@ func TestWizardState(t *testing.T) {
 	if err := st.apply(&specDraft{}); err == nil || !strings.Contains(err.Error(), "unknown type") {
 		t.Fatalf("bad custom type: %v", err)
 	}
-	if p := st.preview(specDraft{}); !strings.HasPrefix(p, "Cannot build the spec yet") {
+	if p := st.preview(&specDraft{}); !strings.HasPrefix(p, "Cannot build the spec yet") {
 		t.Fatalf("preview with error: %s", p)
 	}
 	st.Inputs[1] = typeSlot{Name: "x", Choice: "int"}

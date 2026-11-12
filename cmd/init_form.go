@@ -1,4 +1,4 @@
-package cli
+package cmd
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"charm.land/huh/v2"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 // customType is the type picker's option for typing a type expression.
@@ -48,6 +48,7 @@ func (w *initWizard) run(form *huh.Form) error {
 	if !w.accessible && form.State != huh.StateCompleted {
 		return cancelled
 	}
+
 	return nil
 }
 
@@ -57,6 +58,7 @@ func (w *initWizard) fill(d *specDraft, dir string) (bool, error) {
 	if w.accessible {
 		return w.fillSequential(d, dir)
 	}
+
 	return w.fillForm(d, dir)
 }
 
@@ -73,6 +75,7 @@ func (w *initWizard) fillSequential(d *specDraft, dir string) (bool, error) {
 				if strings.TrimSpace(s) == "" && defName == "" {
 					return errors.New("name is required")
 				}
+
 				return nil
 			}),
 		huh.NewInput().
@@ -126,6 +129,7 @@ func (w *initWizard) fillSequential(d *specDraft, dir string) (bool, error) {
 	))); err != nil {
 		return false, err
 	}
+
 	return ok, nil
 }
 
@@ -149,8 +153,10 @@ func (w *initWizard) fields(title, noun, help string) ([]project.Field, error) {
 						if len(fields) == 0 {
 							return fmt.Errorf("at least one %s is required", noun)
 						}
+
 						return nil
 					}
+
 					return checkFieldName(s, fields)
 				}),
 		))); err != nil {
@@ -161,9 +167,10 @@ func (w *initWizard) fields(title, noun, help string) ([]project.Field, error) {
 			if len(fields) == 0 { // only reachable when input ends early (EOF)
 				return nil, fmt.Errorf("at least one %s is required", noun)
 			}
+
 			return fields, nil
 		}
-		t, err := w.pickType(fmt.Sprintf("Type of %s", name))
+		t, err := w.pickType("Type of " + name)
 		if err != nil {
 			return nil, err
 		}
@@ -184,6 +191,7 @@ func (w *initWizard) pickType(title string) (*project.Type, error) {
 	if err := w.run(huh.NewForm(huh.NewGroup(customTypeInput(title, &expr)))); err != nil {
 		return nil, err
 	}
+
 	return project.ParseTypeExpr(expr)
 }
 
@@ -208,6 +216,7 @@ func (w *initWizard) output() (*project.Type, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return project.RecordOf(fields...), nil
 }
 
@@ -228,6 +237,7 @@ func (w *initWizard) options(d *specDraft) error {
 			Value(&tol).
 			Validate(func(s string) error {
 				_, err := parseTolerance(s)
+
 				return err
 			}))
 	}
@@ -239,6 +249,7 @@ func (w *initWizard) options(d *specDraft) error {
 			if len(v) == 0 {
 				return errors.New("pick at least one target")
 			}
+
 			return nil
 		}))
 	if err := w.run(huh.NewForm(huh.NewGroup(fields...).Title("Options"))); err != nil {
@@ -250,6 +261,7 @@ func (w *initWizard) options(d *specDraft) error {
 	}
 	d.FloatTolerance = f
 	d.Targets = targets
+
 	return nil
 }
 
@@ -263,5 +275,6 @@ func parseTolerance(s string) (float64, error) {
 	if err != nil || f < 0 || math.IsNaN(f) || math.IsInf(f, 0) {
 		return 0, fmt.Errorf("invalid tolerance %q: want a number >= 0", s)
 	}
+
 	return f, nil
 }

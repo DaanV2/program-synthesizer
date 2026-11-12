@@ -7,7 +7,7 @@ import (
 
 	"charm.land/log/v2"
 
-	"github.com/DaanV2/go-tool-template/infrastructure/logging"
+	"github.com/DaanV2/program-synthesizer/infrastructure/logging"
 )
 
 func TestSetupWriter(t *testing.T) {

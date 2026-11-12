@@ -1,5 +1,5 @@
 // Package clidocs generates the Markdown CLI reference in docs/cli from the
-// cobra command tree built by cli.NewRootCmd, so the reference cannot drift
+// cobra command tree built by cmd.NewRootCmd, so the reference cannot drift
 // from the real CLI. Run it with `just docs` (cmd/gendocs); the test in this
 // package fails when the committed pages are stale.
 package clidocs
@@ -14,12 +14,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 
-	"synth/internal/cli"
+	"github.com/DaanV2/program-synthesizer/cmd"
 )
 
 // header is written at the top of every generated page. It is an HTML
 // comment, so GitHub does not render it.
-const header = "<!-- Generated from the cobra command tree by `just docs`. Do not edit; change the help text in internal/cli instead. -->\n\n"
+const header = "<!-- Generated from the cobra command tree by `just docs`. Do not edit; change the help text in cmd/ instead. -->\n\n"
 
 // Generate writes one Markdown page per command into dir, replacing any
 // *.md files already there (so pages of removed commands disappear). dir
@@ -43,9 +43,10 @@ func Generate(dir string) error {
 		}
 	}
 
-	root := cli.NewRootCmd()
+	root := cmd.NewRootCmd()
 	root.DisableAutoGenTag = true
 	prepare(root)
+
 	return doc.GenMarkdownTreeCustom(root, dir,
 		func(string) string { return header },
 		func(link string) string { return link },
@@ -97,6 +98,7 @@ func markdownText(s string) string {
 		if !indented(lines[i]) {
 			out = append(out, escapeProse(lines[i]))
 			i++
+
 			continue
 		}
 		// The block runs to the last indented line before the next
@@ -117,6 +119,7 @@ func markdownText(s string) string {
 		}
 		i = end + 1
 	}
+
 	return strings.Join(out, "\n")
 }
 
@@ -142,6 +145,7 @@ func dedent(lines []string) []string {
 			out[i] = strings.TrimRight(l[indent:], " \t")
 		}
 	}
+
 	return out
 }
 
@@ -167,6 +171,7 @@ func escapeProse(s string) string {
 			b.WriteRune(r)
 		}
 	}
+
 	return b.String()
 }
 
@@ -178,7 +183,7 @@ func Check(dir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 	if err := Generate(tmp); err != nil {
 		return nil, err
 	}
@@ -206,6 +211,7 @@ func Check(dir string) ([]string, error) {
 		}
 	}
 	slices.Sort(diffs)
+
 	return diffs, nil
 }
 
@@ -222,6 +228,7 @@ func readPages(dir string) (map[string]string, error) {
 		}
 		pages[filepath.Base(f)] = strings.ReplaceAll(string(b), "\r\n", "\n")
 	}
+
 	return pages, nil
 }
 
@@ -240,5 +247,6 @@ func firstDiff(have, want string) string {
 			return fmt.Sprintf(" at line %d:\n    committed: %q\n    generated: %q", i+1, hl, wl)
 		}
 	}
+
 	return ""
 }

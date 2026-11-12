@@ -53,6 +53,7 @@ func ParseSplit(s string) (Split, error) {
 			return sp, nil
 		}
 	}
+
 	return "", fmt.Errorf("unknown split %q (want train or holdout)", s)
 }
 
@@ -99,6 +100,7 @@ func specPath(dir string) string {
 			return p
 		}
 	}
+
 	return ""
 }
 
@@ -122,6 +124,7 @@ func Load(dir string) (*Project, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", p, err)
 	}
+
 	return &Project{Dir: dir, SpecPath: p, Spec: s}, nil
 }
 
@@ -142,7 +145,12 @@ func Create(dir string, s *Spec) (*Project, error) {
 			}
 		}
 	}
-	return p, p.Save()
+
+	if err := p.Save(); err != nil {
+		return nil, err
+	}
+
+	return p, nil
 }
 
 // Save validates the spec and writes it back to SpecPath.
@@ -160,6 +168,7 @@ func (p *Project) Save() error {
 	if err != nil {
 		return err
 	}
+
 	return os.WriteFile(p.SpecPath, b, 0o644)
 }
 
@@ -197,6 +206,7 @@ func (p *Project) Examples(sp Split) ([]Example, []error) {
 	for name := range ins {
 		if !outs[name] {
 			errs = append(errs, &PairError{Path: p.ExamplePath(sp, name, Input), Missing: "output in " + string(Output) + "/"})
+
 			continue
 		}
 		exs = append(exs, Example{Split: sp, Name: name, InputPath: p.ExamplePath(sp, name, Input), OutputPath: p.ExamplePath(sp, name, Output)})
@@ -208,6 +218,7 @@ func (p *Project) Examples(sp Split) ([]Example, []error) {
 	}
 	sort.Slice(exs, func(i, j int) bool { return exs[i].Name < exs[j].Name })
 	sort.Slice(errs, func(i, j int) bool { return errs[i].Error() < errs[j].Error() })
+
 	return exs, errs
 }
 
@@ -231,6 +242,7 @@ func listNames(dir string) (map[string]bool, error) {
 		}
 		names[strings.TrimSuffix(e.Name(), Ext)] = true
 	}
+
 	return names, nil
 }
 
@@ -257,6 +269,7 @@ func (p *Project) LoadExample(e Example) (*LoadedExample, error) {
 	if err := p.Spec.Output.Check(out, "output"); err != nil {
 		return nil, fmt.Errorf("%s: %w", e.OutputPath, err)
 	}
+
 	return &LoadedExample{Example: e, Input: in.(map[string]any), Output: out}, nil
 }
 
@@ -277,6 +290,7 @@ func (p *Project) Validate() []error {
 			le, err := p.LoadExample(e)
 			if err != nil {
 				errs = append(errs, err)
+
 				continue
 			}
 			in, err1 := CanonicalValue(p.Spec.Input, any(le.Input))
@@ -291,6 +305,7 @@ func (p *Project) Validate() []error {
 			}
 		}
 	}
+
 	return errs
 }
 
@@ -334,10 +349,12 @@ func (p *Project) WriteExample(sp Split, name string, input, output any, overwri
 	}
 	if err := WriteValueFile(e.OutputPath, p.Spec.Output, output); err != nil {
 		if inExisted != nil {
-			os.Remove(e.InputPath)
+			_ = os.Remove(e.InputPath) // best effort: don't leave an orphan input
 		}
+
 		return e, err
 	}
+
 	return e, nil
 }
 
@@ -352,6 +369,7 @@ func ValidName(name string) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -370,5 +388,6 @@ func (p *Project) NextName(sp Split) (string, error) {
 			}
 		}
 	}
+
 	return fmt.Sprintf("%03d", maxN+1), nil
 }

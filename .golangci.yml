@@ -3,6 +3,23 @@ version: "2"
 linters:
   # See the dedicated "linters" documentation section.
   settings:
+    # synth is a CLI that reads and writes the user's own project files:
+    # paths come from flags by design (G304), and spec/data files are meant to
+    # be world-readable and committed to git (G301/G306).
+    gosec:
+      excludes:
+        - G301
+        - G304
+        - G306
+    # A default case is an explicit decision to handle the remaining kinds.
+    exhaustive:
+      default-signifies-exhaustive: true
+    # Writes to the terminal (cmd.OutOrStdout) have no useful error handling.
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
     cyclop:
       max-complexity: 20
       package-average: 10
@@ -99,6 +116,8 @@ linters:
       - path: "_test\\.go"
         linters:
           - goconst
+          - cyclop
+          - prealloc
   enable:
     - asciicheck
     - bidichk

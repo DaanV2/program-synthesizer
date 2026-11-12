@@ -1,9 +1,9 @@
-package cli
+package cmd
 
 import (
 	"github.com/spf13/cobra"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 // projectFlag is the persistent --project/-C flag name.
@@ -21,5 +21,6 @@ func loadProject(cmd *cobra.Command) (*project.Project, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return project.Load(dir)
 }

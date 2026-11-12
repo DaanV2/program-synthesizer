@@ -9,8 +9,8 @@ one place where the shells differ (inline JSON) is called out.
 
 ## Install
 
-You need [Go](https://go.dev/dl/) 1.25.8 or newer and, for the recipes in
-the `justfile`, [just](https://github.com/casey/just):
+You need [Go](https://go.dev/dl/) 1.27 or newer and, for the recipes in
+the `.justfile`, [just](https://github.com/casey/just):
 
 ```powershell
 winget install GoLang.Go
@@ -21,7 +21,7 @@ Clone the repository, then build and install from its root:
 
 ```powershell
 just build               # builds bin\synth.exe
-go install ./cmd/synth   # installs synth.exe into $(go env GOPATH)\bin
+go install .             # installs synth.exe into $(go env GOPATH)\bin
 synth --version
 ```
 
@@ -109,7 +109,7 @@ synth data add --input in.json --output out.json --name turing
 ```
 
 ```text
-15:56:19 INFO  added example split=train name=turing
+INFO  added example split=train name=turing
 data/train/in/turing.json
 data/train/out/turing.json
 ```
@@ -138,7 +138,7 @@ synth data add --in '{"first": "Ada", "last": "Lovelace", "age": 36}' --out '{"f
 ```
 
 ```text
-15:56:19 INFO  added example split=train name=001
+INFO  added example split=train name=001
 data/train/in/001.json
 data/train/out/001.json
 ```
@@ -238,8 +238,8 @@ Import is all or nothing. If any row is wrong, every problem is listed with
 its line number and nothing is written:
 
 ```text
-15:57:48 ERROR more.csv:2: column "age": invalid int "thirty-six"
-15:57:48 ERROR more.csv:3: column "out.isAdult": invalid bool "yes" (want true/false or 1/0)
+ERROR more.csv:2: column "age": invalid int "thirty-six"
+ERROR more.csv:3: column "out.isAdult": invalid bool "yes" (want true/false or 1/0)
 
 ERROR
 
@@ -262,7 +262,7 @@ synth data import --inputs raw/in --outputs raw/out
 ```
 
 ```text
-15:56:27 WARN  raw/in/dahl.json: no matching output in raw/out, skipped
+WARN  raw/in/dahl.json: no matching output in raw/out, skipped
 imported 2 example(s): 2 train, 0 holdout
 ```
 
@@ -339,7 +339,7 @@ synth config set input.title string --strict
 ```
 
 ```text
-15:56:32 ERROR 12 example problem(s) with the new spec:
+ERROR 12 example problem(s) with the new spec:
   data/train/in/001.json: input: missing field "title"
   data/train/in/002.json: input: missing field "title"
   data/train/in/003.json: input: missing field "title"
@@ -413,7 +413,7 @@ synth solve examples.json
 ```
 
 ```text
-15:57:48 INFO  solving examples=examples.json timeout=30s
+INFO  solving examples=examples.json timeout=30s
 
 ERROR
 

@@ -1,6 +1,7 @@
 package project
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -25,6 +26,7 @@ func mustSpec(t *testing.T, src string) *Spec {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return s
 }
 
@@ -43,6 +45,7 @@ func TestParseKey(t *testing.T) {
 		k, err := ParseKey(in)
 		if err != nil {
 			t.Errorf("%s: %v", in, err)
+
 			continue
 		}
 		got := k.Root
@@ -94,6 +97,7 @@ func TestParseTypeExprAndFormat(t *testing.T) {
 		typ, err := ParseTypeExpr(in)
 		if err != nil {
 			t.Errorf("%q: %v", in, err)
+
 			continue
 		}
 		got := FormatType(typ)
@@ -212,11 +216,17 @@ func TestSet(t *testing.T) {
 		steps []step
 		check map[string]string // key -> expected Get value after the steps
 	}{
-		{"scalars", []step{{"name", "other"}, {"description", "hello world"}, {"options.float_tolerance", "1e-6"}, {"options.targets", " Rust, go ,rust"}},
-			map[string]string{"name": "other", "description": "hello world", "options.float_tolerance": "1e-06", "options.targets": "rust,go"}},
+		{
+			"scalars",
+			[]step{{"name", "other"}, {"description", "hello world"}, {"options.float_tolerance", "1e-6"}, {"options.targets", " Rust, go ,rust"}},
+			map[string]string{"name": "other", "description": "hello world", "options.float_tolerance": "1e-06", "options.targets": "rust,go"},
+		},
 		{"targets with brackets", []step{{"options.targets", "[c]"}}, map[string]string{"options.targets": "c"}},
-		{"replace param keeps position", []step{{"input.first", "list<string>"}},
-			map[string]string{"input": "{first: list<string>, age: int, address: {city: string, zip: string}, orders: [{id: int, total: float}]}"}},
+		{
+			"replace param keeps position",
+			[]step{{"input.first", "list<string>"}},
+			map[string]string{"input": "{first: list<string>, age: int, address: {city: string, zip: string}, orders: [{id: int, total: float}]}"},
+		},
 		{"add param at end", []step{{"input.score", "float"}}, map[string]string{"input.score": "float"}},
 		{"nested field", []step{{"input.address.country", "string"}}, map[string]string{"input.address": "{city: string, zip: string, country: string}"}},
 		{"list element field", []step{{"input.orders[].qty", "int"}}, map[string]string{"input.orders": "[{id: int, total: float, qty: int}]"}},
@@ -280,7 +290,7 @@ func TestSetErrors(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("Set(%s, %q): got %v, want error containing %q", tc.key, tc.value, err, tc.want)
 		}
-		if after, _ := s.EncodeYAML(); string(after) != string(before) {
+		if after, _ := s.EncodeYAML(); !bytes.Equal(after, before) {
 			t.Errorf("Set(%s, %q) failed but changed the spec", tc.key, tc.value)
 		}
 	}

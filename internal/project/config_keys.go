@@ -73,6 +73,7 @@ func ParseKey(s string) (Key, error) {
 	switch s {
 	case KeyName, KeyDescription, KeyFloatTolerance, KeyTargets, KeyInput, KeyOutput:
 		k.Root = s
+
 		return k, nil
 	}
 	root, rest, ok := strings.Cut(s, ".")
@@ -95,12 +96,29 @@ func ParseKey(s string) (Key, error) {
 		}
 		k.Path = append(k.Path, KeySeg{Name: name, Lists: lists})
 	}
+
 	return k, nil
 }
 
 func unknownKey(s string) error {
 	return fmt.Errorf("unknown key %q (known: name, description, input, input.<param>, output, output.<field>, %s, %s)",
 		s, KeyFloatTolerance, KeyTargets)
+}
+
+// complexListElem returns the element of list<...> when it is a record,
+// a [T] list or another list<...> (forms the plain string syntax cannot hold).
+func complexListElem(s string) (string, bool) {
+	inner, ok := strings.CutPrefix(s, "list<")
+	if !ok {
+		return "", false
+	}
+	inner, ok = strings.CutSuffix(inner, ">")
+	if !ok {
+		return "", false
+	}
+	t := strings.TrimSpace(inner)
+
+	return inner, strings.HasPrefix(t, "{") || strings.HasPrefix(t, "[") || strings.HasPrefix(t, "list<")
 }
 
 // ParseTypeExpr parses a type written on one line in spec.yaml syntax, e.g.
@@ -112,16 +130,13 @@ func ParseTypeExpr(s string) (*Type, error) {
 	}
 	// list<{...}> / list<[...]>: the string form cannot hold records, so
 	// parse the element as an expression of its own.
-	if inner, ok := strings.CutPrefix(s, "list<"); ok {
-		if inner, ok = strings.CutSuffix(inner, ">"); ok {
-			if t := strings.TrimSpace(inner); strings.HasPrefix(t, "{") || strings.HasPrefix(t, "[") || strings.HasPrefix(t, "list<") {
-				elem, err := ParseTypeExpr(inner)
-				if err != nil {
-					return nil, err
-				}
-				return ListOf(elem), nil
-			}
+	if inner, ok := complexListElem(s); ok {
+		elem, err := ParseTypeExpr(inner)
+		if err != nil {
+			return nil, err
 		}
+
+		return ListOf(elem), nil
 	}
 	if err := checkTrailing(s); err != nil {
 		return nil, err
@@ -138,6 +153,7 @@ func ParseTypeExpr(s string) (*Type, error) {
 		// typeFromNode's messages already name the offending part.
 		return nil, errors.New(strings.TrimPrefix(err.Error(), "line 1: "))
 	}
+
 	return t, nil
 }
 
@@ -165,16 +181,19 @@ func checkTrailing(s string) error {
 				if rest := strings.TrimSpace(s[i+1:]); rest != "" && !strings.HasPrefix(rest, "#") {
 					return fmt.Errorf("invalid type %q: unexpected %q after the closing %q", s, rest, r)
 				}
+
 				return nil
 			}
 		}
 	}
+
 	return nil // unclosed: the decoder reports it
 }
 
 func cleanYAMLErr(err error) error {
 	msg := strings.TrimPrefix(err.Error(), "yaml: ")
 	msg = strings.TrimPrefix(msg, "line 1: ")
+
 	return errors.New(msg)
 }
 
@@ -190,12 +209,15 @@ func FormatType(t *Type) string {
 		for i, f := range t.Fields {
 			parts[i] = f.Name + ": " + FormatType(f.Type)
 		}
+
 		return "{" + strings.Join(parts, ", ") + "}"
 	case List:
 		if t.hasRecord() {
 			return "[" + FormatType(t.Elem) + "]"
 		}
+	default: // scalars
 	}
+
 	return t.String()
 }
 
@@ -227,6 +249,7 @@ func (s *Spec) List() []KeyValue {
 	if len(s.Options.Targets) > 0 {
 		kvs = append(kvs, KeyValue{KeyTargets, strings.Join(s.Options.Targets, ",")})
 	}
+
 	return kvs
 }
 
@@ -247,22 +270,26 @@ func (s *Spec) Get(key string) (string, error) {
 		if s.Description == "" {
 			return "", notSet
 		}
+
 		return s.Description, nil
 	case KeyFloatTolerance:
 		if s.Options.FloatTolerance == 0 {
 			return "", notSet
 		}
+
 		return formatFloat(s.Options.FloatTolerance), nil
 	case KeyTargets:
 		if len(s.Options.Targets) == 0 {
 			return "", notSet
 		}
+
 		return strings.Join(s.Options.Targets, ","), nil
 	}
 	t, err := s.lookup(k)
 	if err != nil {
 		return "", err
 	}
+
 	return FormatType(t), nil
 }
 
@@ -271,6 +298,7 @@ func (s *Spec) rootType(root string) **Type {
 	if root == KeyInput {
 		return &s.Input
 	}
+
 	return &s.Output
 }
 
@@ -300,6 +328,7 @@ func (s *Spec) lookup(k Key) (*Type, error) {
 			t = t.Elem
 		}
 	}
+
 	return t, nil
 }
 
@@ -312,6 +341,7 @@ func asRecord(t *Type, at string) (*Type, error) {
 	if t.Kind == List && t.Elem.Kind == Record {
 		hint = fmt.Sprintf(" (use %s[] to reach its element's fields)", at)
 	}
+
 	return nil, fmt.Errorf("expected a record at %s, found %s%s", at, FormatType(t), hint)
 }
 
@@ -338,6 +368,7 @@ func (s *Spec) parent(k Key, create bool) (*Type, string, error) {
 			nt := &Type{Kind: Record}
 			rec.Fields = append(rec.Fields, F(seg.Name, nt))
 			t, at = nt, at+"."+seg.Name
+
 			continue
 		}
 		at += "." + seg.Name
@@ -351,6 +382,7 @@ func (s *Spec) parent(k Key, create bool) (*Type, string, error) {
 		}
 	}
 	rec, err := asRecord(t, at)
+
 	return rec, at, err
 }
 
@@ -367,9 +399,11 @@ func (s *Spec) Set(key, value string) error {
 			return errors.New("name must not be empty")
 		}
 		s.Name = value
+
 		return nil
 	case KeyDescription:
 		s.Description = value
+
 		return nil
 	case KeyFloatTolerance:
 		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
@@ -380,6 +414,7 @@ func (s *Spec) Set(key, value string) error {
 			return fmt.Errorf("invalid %s: must be >= 0", key)
 		}
 		s.Options.FloatTolerance = f
+
 		return nil
 	case KeyTargets:
 		targets, err := ParseTargets(value)
@@ -390,6 +425,7 @@ func (s *Spec) Set(key, value string) error {
 			return fmt.Errorf("no targets given for %s (use unset to remove the setting)", key)
 		}
 		s.Options.Targets = targets
+
 		return nil
 	}
 
@@ -402,6 +438,7 @@ func (s *Spec) Set(key, value string) error {
 			return fmt.Errorf("input must be a record of named parameters, e.g. {x: int, y: int}; got %s", FormatType(t))
 		}
 		*s.rootType(k.Root) = t
+
 		return nil
 	}
 	last := k.Path[len(k.Path)-1]
@@ -418,6 +455,7 @@ func (s *Spec) Set(key, value string) error {
 	} else {
 		rec.Fields = append(rec.Fields, F(last.Name, t))
 	}
+
 	return nil
 }
 
@@ -436,12 +474,15 @@ func (s *Spec) Unset(key string) error {
 		}
 	case KeyDescription:
 		s.Description = ""
+
 		return nil
 	case KeyFloatTolerance:
 		s.Options.FloatTolerance = 0
+
 		return nil
 	case KeyTargets:
 		s.Options.Targets = nil
+
 		return nil
 	}
 	last := k.Path[len(k.Path)-1]
@@ -460,6 +501,7 @@ func (s *Spec) Unset(key string) error {
 		return fmt.Errorf("cannot remove %s: it is the only field of %s (set %s to a new type instead)", key, at, at)
 	}
 	rec.Fields = slices.Delete(rec.Fields, i, i+1)
+
 	return nil
 }
 
@@ -498,6 +540,7 @@ func (s *Spec) Move(key, other string, after bool) error {
 		to++
 	}
 	rec.Fields = slices.Insert(rec.Fields, to, f)
+
 	return nil
 }
 
@@ -520,5 +563,6 @@ func ParseTargets(s string) ([]string, error) {
 			out = append(out, t)
 		}
 	}
+
 	return out, nil
 }

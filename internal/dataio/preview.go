@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"synth/internal/project"
+	"github.com/DaanV2/program-synthesizer/internal/project"
 )
 
 // Preview renders v as compact one-line JSON, listing record fields in the
@@ -16,6 +16,7 @@ import (
 func Preview(v any, t *project.Type, maxRunes int) string {
 	var b strings.Builder
 	writeCompact(&b, v, t)
+
 	return truncate(b.String(), maxRunes)
 }
 
@@ -72,6 +73,7 @@ func writeCompact(b *strings.Builder, v any, t *project.Type) {
 		enc, err := marshal(x)
 		if err != nil {
 			b.WriteString("?")
+
 			return
 		}
 		b.Write(enc)
@@ -89,6 +91,7 @@ func truncate(s string, maxRunes int) string {
 	if maxRunes == 1 {
 		return "…"
 	}
+
 	return string(r[:maxRunes-1]) + "…"
 }
 
@@ -100,5 +103,6 @@ func marshal(v any) ([]byte, error) {
 	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
+
 	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }

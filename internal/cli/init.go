@@ -28,11 +28,12 @@ func newInitCmd() *cobra.Command {
 	var f initFlags
 	cmd := &cobra.Command{
 		Use:   "init [dir]",
-		Short: "Create a new project with an interactive wizard",
+		Short: "Create a new project (interactive wizard or flags)",
 		Long: `Create a project: spec.yaml plus empty data/train and data/holdout directories.
 
 dir defaults to --project (the current directory unless -C is given) and is
 created if missing. init refuses to run where a spec.yaml or spec.json exists.
+--name defaults to the directory name.
 
 In a terminal, init asks for the name, description, input parameters, output
 type and options, shows the resulting spec.yaml and asks before writing it.
@@ -48,12 +49,13 @@ Writing --input and --output:
   repeated flags are concatenated:    --input first=string --input age=int
 Types with commas inside brackets are fine in pairs: 'pos={x: int, y: int},n=int'.
 --output takes a single type ('int', 'list<string>', '[{id: int}]') or a record
-in either of the forms above.`,
+in either of the forms above. Quote these values: < > { } [ ] and , mean
+something to PowerShell and sh. Single quotes work in both.`,
 		Example: `  # Interactive wizard in a new directory
   synth init fullname
 
-  # Non-interactive (quote types: < > { } [ ] are special in PowerShell and sh)
-  synth init fullname --yes --name full-name --input 'first=string,last=string,age=int' --output 'fullName=string,isAdult=bool' --targets go,rust
+  # Non-interactive
+  synth init fullname --yes --name full-name --input 'first=string,last=string,age=int' --output 'fullName=string,isAdult=bool' --targets 'go,rust'
 
   # Records and lists of records
   synth init orders -y --input '{customer: {name: string}, orders: [{id: int, total: float}]}' --output float --float-tolerance 1e-9`,
